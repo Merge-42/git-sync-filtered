@@ -10,18 +10,20 @@ A thin wrapper around [git-filter-repo](https://github.com/newren/git-filter-rep
 uv tool install git+https://github.com/Merge-42/git-sync-filtered
 ```
 
+### uvx (run without installing)
+
+```bash
+uvx git+https://github.com/Merge-42/git-sync-filtered \
+  --private git@github.com:org/private.git \
+  --public git@github.com:org/public.git \
+  --keep src \
+  --keep docs
+```
+
 ### pip
 
 ```bash
 pip install git+https://github.com/Merge-42/git-sync-filtered
-```
-
-### Development
-
-```bash
-git clone https://github.com/Merge-42/git-sync-filtered
-cd git-sync-filtered
-pip install -e .
 ```
 
 ## Usage
@@ -34,11 +36,26 @@ git-sync-filtered \
   --keep docs
 ```
 
+Or use a file to specify paths:
+
+```bash
+# paths.txt
+# src
+# docs
+# README.md
+
+git-sync-filtered \
+  --private git@github.com:org/private.git \
+  --public git@github.com:org/public.git \
+  --keep-from-file paths.txt
+```
+
 ### Options
 
 - `--private` - Private repo path or URL (required)
 - `--public` - Public repo path or URL (required)
 - `--keep` - Paths to keep (can specify multiple, required)
+- `--keep-from-file` - File containing paths to keep (one per line, lines starting with # are comments)
 - `--sync-branch` - Sync branch name (default: upstream/sync)
 - `--main-branch` - Main branch name (default: main)
 - `--private-branch` - Private branch to sync from (default: main)
@@ -57,10 +74,11 @@ The sync branch can then be merged into main manually or with `--merge`.
 
 ## Workflow
 
-```text
-Private Repo → git-sync-filtered → Public Repo: upstream/sync
-                                                    ↓ (manual or --merge)
-                                              Public Repo: main
+```mermaid
+flowchart LR
+    A[Private Repo<br/>main] -->|clone & filter| B[git-sync-filtered]
+    B -->|push| C[Public Repo<br/>upstream/sync]
+    C -->|"merge<br/>(manual or with --merge)"| D[Public Repo<br/>main]
 ```
 
 ## Requirements
