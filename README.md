@@ -76,9 +76,9 @@ The sync branch can then be merged into main manually or with `--merge`.
 
 ```mermaid
 flowchart LR
-    A[Private Repo<br/>main] -->|clone & filter| B[git-sync-filtered]
-    B -->|push| C[Public Repo<br/>upstream/sync]
-    C -->|"merge<br/>(manual or with --merge)"| D[Public Repo<br/>main]
+    A[Private Repo<br/>private-branch] -->|clone & filter| B[git-sync-filtered]
+    B -->|push| C[Public Repo<br/>sync-branch]
+    C -->|"merge<br/>(manual or with --merge)"| D[Public Repo<br/>main-branch]
 ```
 
 ## Requirements
