@@ -128,7 +128,7 @@ def main(
             for commit in private_repo.iter_commits(private_branch):
                 click.echo(f"  {commit.hexsha[:8]} {commit.summary}")
         else:
-            click.echo(f"[git-sync] Pushing to sync branch...")
+            click.echo("[git-sync] Pushing to sync branch...")
             refspec = f"refs/heads/{private_branch}:refs/heads/{sync_branch}"
             private_repo.remote("public").push(refspec=refspec, force=force)
 
@@ -153,12 +153,12 @@ def main(
                     refspec=f"refs/heads/{main_branch}:refs/heads/{main_branch}"
                 )
                 click.echo(f"[git-sync] Merged and pushed to {main_branch}")
-            except git.GitCommandError as e:
-                click.echo(f"[git-sync] Merge conflict! Please resolve manually:")
+            except git.GitCommandError:
+                click.echo("[git-sync] Merge conflict! Please resolve manually:")
                 click.echo(f"  cd {private_clone}")
                 click.echo(f"  git checkout {main_branch}")
                 click.echo(f"  git merge {sync_branch}")
-                click.echo(f"  # Fix conflicts")
+                click.echo("  # Fix conflicts")
                 click.echo(f"  git push public {main_branch}")
 
         click.echo()
