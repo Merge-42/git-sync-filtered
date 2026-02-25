@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+"""
+git-sync-filtered - Sync filtered commits from private to public repo
+
+Uses git-filter-repo and GitPython (no subprocess).
+
+Usage:
+    git-sync-filtered --private /path/to/private --public /path/to/public --keep src --keep docs
+"""
+
+import shutil
+import tempfile
+from pathlib import Path
+
+import click
+import git
+from git_filter_repo import RepoFilter, FilteringOptions
+
+
+from itertools import filterfalse
+
+
+def read_paths_from_file(path: Path) -> list[str]:
+    lines = (line.strip() for line in path.read_text().splitlines())
+    return list(filterfalse(lambda line: line.startswith("#") or not line, lines))
+
+
+@click.command()
+@click.option("--private", required=True, help="Private repo path or URL")
+@click.option("--public", required=True, help="Public repo path or URL")
+@click.option("--keep", multiple=True, help="Paths to keep (can specify multiple)")
+@click.option(
+    "--keep-from-file",
+    type=click.Path(exists=True),
+    help="File containing paths to keep (one per line)",
+)
+@click.option("--sync-branch", default="upstream/sync", help="Sync branch name")
+@click.option("--main-branch", default="main", help="Main branch name")
+@click.option("--private-branch", default="main", help="Private branch to sync from")
+@click.option("--dry-run", is_flag=True, help="Show what would happen without making changes")
+@click.option("--merge", is_flag=True, help="Merge into main branch after sync")
+@click.option("--force", is_flag=True, help="Force push")
+def main(
+    private,
+    public,
+    keep,
+    keep_from_file,
+    sync_branch,
+    main_branch,
+    private_branch,
+    dry_run,
+    merge,
+    force,
+):
+    """Sync filtered commits from private to public repository."""
+
+    # Collect all paths to keep
+    paths_to_keep = list(keep)
+
+    # Add paths from file if specified
+    if keep_from_file:
+        paths_to_keep.extend(read_paths_from_file(Path(keep_from_file)))
+
+    # Remove duplicates while preserving order
+    seen = set()
+    paths_to_keep = [x for x in paths_to_keep if not (x in seen or seen.add(x))]
+
+    if not paths_to_keep:
+        raise click.ClickException("At least one --keep path or --keep-from-file required")
+
+    click.echo("=== Git Filter Sync ===")
+    click.echo(f"Private:    {private}")
+    click.echo(f"Public:     {public}")
+    click.echo(f"Keep:       {paths_to_keep}")
+    click.echo(f"Sync to:    {sync_branch}")
+    click.echo()
+
+    # Create temp directory
+    work_dir = Path(tempfile.mkdtemp(prefix="git-sync-"))
+    click.echo(f"[git-sync] Working in: {work_dir}")
+
+    try:
+        # Clone private repo using GitPython
+        private_clone = work_dir / "private"
+        click.echo(f"[git-sync] Cloning private repo to {private_clone}...")
+        private_repo = git.Repo.clone_from(private, str(private_clone))
+
+        # Run filter-repo using the library
+        click.echo("[git-sync] Running git-filter-repo...")
+
+        # Change to the repo directory for filter-repo
+        import os
+
+        old_cwd = os.getcwd()
+        os.chdir(private_clone)
+
+        try:
+            # Build argv for filtering
+            argv = ["--force", "--partial"]
+            for path in paths_to_keep:
+                argv.extend(["--path", path])
+
+            # Parse arguments and run filter
+            filter_args = FilteringOptions.parse_args(argv, error_on_empty=False)
+            repo_filter = RepoFilter(filter_args)
+            repo_filter.run()
+
+        finally:
+            os.chdir(old_cwd)
+
+        # Set up public remote using GitPython
+        click.echo("[git-sync] Setting up public remote...")
+        if "public" not in private_repo.remotes:
+            private_repo.create_remote("public", public)
+        else:
+            private_repo.remote("public").set_url(public)
+
+        # Fetch from public
+        private_repo.remote("public").fetch()
+
+        # Push to sync branch using GitPython
+        if dry_run:
+            click.echo(f"[git-sync] DRY RUN - Would push to {sync_branch}")
+            click.echo()
+            click.echo("Commits that would be pushed:")
+            for commit in private_repo.iter_commits("main"):
+                click.echo(f"  {commit.hexsha[:8]} {commit.summary}")
+        else:
+            click.echo(f"[git-sync] Pushing to sync branch...")
+            refspec = f"refs/heads/main:refs/heads/{sync_branch}"
+            private_repo.remote("public").push(refspec=refspec, force=force)
+
+        click.echo()
+        click.echo(f"=== Synced to {sync_branch} ===")
+
+        if merge and not dry_run:
+            click.echo(f"[git-sync] Merging into {main_branch}...")
+
+            # Checkout main
+            private_repo.heads[main_branch].checkout()
+
+            try:
+                # Merge sync branch into main
+                sync_head = private_repo.heads[sync_branch]
+                private_repo.index.merge_commit(sync_head, msg=f"Merge branch '{sync_branch}'")
+
+                # Push merged result
+                private_repo.remote("public").push(
+                    refspec=f"refs/heads/{main_branch}:refs/heads/{main_branch}"
+                )
+                click.echo(f"[git-sync] Merged and pushed to {main_branch}")
+            except git.GitCommandError as e:
+                click.echo(f"[git-sync] Merge conflict! Please resolve manually:")
+                click.echo(f"  cd {private_clone}")
+                click.echo(f"  git checkout {main_branch}")
+                click.echo(f"  git merge {sync_branch}")
+                click.echo(f"  # Fix conflicts")
+                click.echo(f"  git push public {main_branch}")
+
+        click.echo()
+        click.echo("Done!")
+
+    finally:
+        # Cleanup
+        shutil.rmtree(work_dir, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    main()
