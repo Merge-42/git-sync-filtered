@@ -38,12 +38,15 @@ git-sync-filtered \
 
 Or use a file to specify paths:
 
-```bash
-# paths.txt
-# src
-# docs
-# README.md
+### paths.txt
 
+```text
+src
+docs
+README.md
+```
+
+```bash
 git-sync-filtered \
   --private git@github.com:org/private.git \
   --public git@github.com:org/public.git \
