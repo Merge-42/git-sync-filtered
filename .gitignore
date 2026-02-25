@@ -103,3 +103,5 @@ celerybeat-schedule
 .envrc
 devbox.*
 .devbox/
+.trunk/
+.ruff_cache/

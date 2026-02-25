@@ -2,7 +2,7 @@
 """
 git-sync-filtered - Sync filtered commits from private to public repo
 
-Uses git-filter-repo and GitPython (no subprocess).
+Uses git-filter-repo and GitPython.
 
 Usage:
     git-sync-filtered --private /path/to/private --public /path/to/public --keep src --keep docs
@@ -10,14 +10,12 @@ Usage:
 
 import shutil
 import tempfile
+from itertools import filterfalse
 from pathlib import Path
 
 import click
 import git
-from git_filter_repo import RepoFilter, FilteringOptions
-
-
-from itertools import filterfalse
+from git_filter_repo import FilteringOptions, RepoFilter
 
 
 def read_paths_from_file(path: Path) -> list[str]:
@@ -37,7 +35,9 @@ def read_paths_from_file(path: Path) -> list[str]:
 @click.option("--sync-branch", default="upstream/sync", help="Sync branch name")
 @click.option("--main-branch", default="main", help="Main branch name")
 @click.option("--private-branch", default="main", help="Private branch to sync from")
-@click.option("--dry-run", is_flag=True, help="Show what would happen without making changes")
+@click.option(
+    "--dry-run", is_flag=True, help="Show what would happen without making changes"
+)
 @click.option("--merge", is_flag=True, help="Merge into main branch after sync")
 @click.option("--force", is_flag=True, help="Force push")
 def main(
@@ -66,7 +66,9 @@ def main(
     paths_to_keep = [x for x in paths_to_keep if not (x in seen or seen.add(x))]
 
     if not paths_to_keep:
-        raise click.ClickException("At least one --keep path or --keep-from-file required")
+        raise click.ClickException(
+            "At least one --keep path or --keep-from-file required"
+        )
 
     click.echo("=== Git Filter Sync ===")
     click.echo(f"Private:    {private}")
@@ -123,11 +125,11 @@ def main(
             click.echo(f"[git-sync] DRY RUN - Would push to {sync_branch}")
             click.echo()
             click.echo("Commits that would be pushed:")
-            for commit in private_repo.iter_commits("main"):
+            for commit in private_repo.iter_commits(private_branch):
                 click.echo(f"  {commit.hexsha[:8]} {commit.summary}")
         else:
             click.echo(f"[git-sync] Pushing to sync branch...")
-            refspec = f"refs/heads/main:refs/heads/{sync_branch}"
+            refspec = f"refs/heads/{private_branch}:refs/heads/{sync_branch}"
             private_repo.remote("public").push(refspec=refspec, force=force)
 
         click.echo()
@@ -142,7 +144,9 @@ def main(
             try:
                 # Merge sync branch into main
                 sync_head = private_repo.heads[sync_branch]
-                private_repo.index.merge_commit(sync_head, msg=f"Merge branch '{sync_branch}'")
+                private_repo.index.merge_commit(
+                    sync_head, msg=f"Merge branch '{sync_branch}'"
+                )
 
                 # Push merged result
                 private_repo.remote("public").push(
