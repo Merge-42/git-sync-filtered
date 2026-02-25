@@ -1,11 +1,26 @@
 # git-sync-filtered
 
-Sync filtered commits from a private repository to a public repository.
+A thin wrapper around [git-filter-repo](https://github.com/newren/git-filter-repo) for syncing filtered commits from a private repository to a public repository.
 
 ## Installation
 
+### uv (recommended)
+
 ```bash
-cd scripts
+uv tool install git+https://github.com/Merge-42/git-sync-filtered
+```
+
+### pip
+
+```bash
+pip install git+https://github.com/Merge-42/git-sync-filtered
+```
+
+### Development
+
+```bash
+git clone https://github.com/Merge-42/git-sync-filtered
+cd git-sync-filtered
 pip install -e .
 ```
 
