@@ -35,6 +35,24 @@ def collect_paths_to_keep(
     return sorted(list(paths_to_keep))
 
 
+def run_filter_repo(repo_path: Path, paths_to_keep: list[str]) -> None:
+    import os
+
+    old_cwd = os.getcwd()
+    os.chdir(repo_path)
+
+    try:
+        argv = ["--force", "--partial"]
+        for path in paths_to_keep:
+            argv.extend(["--path", path])
+
+        filter_args = FilteringOptions.parse_args(argv, error_on_empty=False)
+        repo_filter = RepoFilter(filter_args)
+        repo_filter.run()
+    finally:
+        os.chdir(old_cwd)
+
+
 @click.command()
 @click.option("--private", required=True, help="Private repo path or URL")
 @click.option("--public", required=True, help="Public repo path or URL")
@@ -92,26 +110,7 @@ def main(
 
         # Run filter-repo using the library
         click.echo("[git-sync] Running git-filter-repo...")
-
-        # Change to the repo directory for filter-repo
-        import os
-
-        old_cwd = os.getcwd()
-        os.chdir(private_clone)
-
-        try:
-            # Build argv for filtering
-            argv = ["--force", "--partial"]
-            for path in paths_to_keep:
-                argv.extend(["--path", path])
-
-            # Parse arguments and run filter
-            filter_args = FilteringOptions.parse_args(argv, error_on_empty=False)
-            repo_filter = RepoFilter(filter_args)
-            repo_filter.run()
-
-        finally:
-            os.chdir(old_cwd)
+        run_filter_repo(private_clone, paths_to_keep)
 
         # Set up public remote using GitPython
         click.echo("[git-sync] Setting up public remote...")
