@@ -53,6 +53,35 @@ def run_filter_repo(repo_path: Path, paths_to_keep: list[str]) -> None:
         os.chdir(old_cwd)
 
 
+def push_to_remote(
+    repo: git.Repo,
+    public_url: str,
+    sync_branch: str,
+    private_branch: str,
+    force: bool = False,
+    dry_run: bool = False,
+) -> list[str]:
+    # Set up public remote
+    if "public" not in repo.remotes:
+        repo.create_remote("public", public_url)
+    else:
+        repo.remote("public").set_url(public_url)
+
+    # Fetch from public
+    repo.remote("public").fetch()
+
+    # Push to sync branch
+    if dry_run:
+        commits = []
+        for commit in repo.iter_commits(private_branch):
+            commits.append(f"  {commit.hexsha[:8]} {commit.summary}")
+        return commits
+    else:
+        refspec = f"refs/heads/{private_branch}:refs/heads/{sync_branch}"
+        repo.remote("public").push(refspec=refspec, force=force)
+        return []
+
+
 @click.command()
 @click.option("--private", required=True, help="Private repo path or URL")
 @click.option("--public", required=True, help="Public repo path or URL")
@@ -112,30 +141,21 @@ def main(
         click.echo("[git-sync] Running git-filter-repo...")
         run_filter_repo(private_clone, paths_to_keep)
 
-        # Set up public remote using GitPython
-        click.echo("[git-sync] Setting up public remote...")
-        if "public" not in private_repo.remotes:
-            private_repo.create_remote("public", public)
-        else:
-            private_repo.remote("public").set_url(public)
+        # Push to remote
+        click.echo("[git-sync] Pushing to sync branch...")
+        dry_run_commits = push_to_remote(
+            private_repo, public, sync_branch, private_branch, force, dry_run
+        )
 
-        # Fetch from public
-        private_repo.remote("public").fetch()
-
-        # Push to sync branch using GitPython
         if dry_run:
             click.echo(f"[git-sync] DRY RUN - Would push to {sync_branch}")
             click.echo()
             click.echo("Commits that would be pushed:")
-            for commit in private_repo.iter_commits(private_branch):
-                click.echo(f"  {commit.hexsha[:8]} {commit.summary}")
+            for commit in dry_run_commits:
+                click.echo(commit)
         else:
-            click.echo("[git-sync] Pushing to sync branch...")
-            refspec = f"refs/heads/{private_branch}:refs/heads/{sync_branch}"
-            private_repo.remote("public").push(refspec=refspec, force=force)
-
-        click.echo()
-        click.echo(f"=== Synced to {sync_branch} ===")
+            click.echo()
+            click.echo(f"=== Synced to {sync_branch} ===")
 
         if merge and not dry_run:
             click.echo(f"[git-sync] Merging into {main_branch}...")
