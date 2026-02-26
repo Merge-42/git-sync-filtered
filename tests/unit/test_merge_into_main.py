@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from git_sync_filtered.__main__ import merge_into_main
+from git_sync_filtered.sync import merge_into_main
 
 
 @pytest.fixture

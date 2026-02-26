@@ -2,14 +2,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from git_sync_filtered.__main__ import run_filter_repo
+from git_sync_filtered.sync import run_filter_repo
 
 
 @pytest.fixture
 def mock_filter_repo():
     with (
-        patch("git_sync_filtered.__main__.FilteringOptions") as mock_options,
-        patch("git_sync_filtered.__main__.RepoFilter") as mock_filter,
+        patch("git_sync_filtered.sync.FilteringOptions") as mock_options,
+        patch("git_sync_filtered.sync.RepoFilter") as mock_filter,
     ):
         mock_filter_instance = MagicMock()
         mock_filter.return_value = mock_filter_instance

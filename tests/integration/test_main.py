@@ -34,7 +34,7 @@ def test_full_sync_flow(tmp_path):
 
     from click.testing import CliRunner
 
-    from git_sync_filtered.__main__ import main
+    from git_sync_filtered.cli import main
 
     runner = CliRunner()
     result = runner.invoke(
@@ -90,7 +90,7 @@ def test_dry_run(tmp_path, capsys):
 
     from click.testing import CliRunner
 
-    from git_sync_filtered.__main__ import main
+    from git_sync_filtered.cli import main
 
     runner = CliRunner()
     result = runner.invoke(

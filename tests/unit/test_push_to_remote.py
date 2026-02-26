@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from git_sync_filtered.__main__ import push_to_remote
+from git_sync_filtered.sync import push_to_remote
 
 
 @pytest.fixture

@@ -1,6 +1,6 @@
 import subprocess
 
-from git_sync_filtered.__main__ import run_filter_repo
+from git_sync_filtered.sync import run_filter_repo
 
 
 def test_run_filter_repo_filters_correctly(tmp_path):

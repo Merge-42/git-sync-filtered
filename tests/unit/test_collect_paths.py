@@ -1,4 +1,4 @@
-from git_sync_filtered.__main__ import collect_paths_to_keep
+from git_sync_filtered.sync import collect_paths_to_keep
 
 
 def test_collect_paths_to_keep_from_args():
