@@ -12,6 +12,7 @@ import shutil
 import tempfile
 from itertools import filterfalse
 from pathlib import Path
+from typing import Optional
 
 import click
 import git
@@ -21,6 +22,17 @@ from git_filter_repo import FilteringOptions, RepoFilter
 def read_paths_from_file(path: Path) -> list[str]:
     lines = (line.strip() for line in path.read_text().splitlines())
     return list(filterfalse(lambda line: line.startswith("#") or not line, lines))
+
+
+def collect_paths_to_keep(
+    keep: tuple[str, ...], keep_from_file: Optional[str]
+) -> list[str]:
+    paths_to_keep = set(keep)
+
+    if keep_from_file:
+        paths_to_keep.update(read_paths_from_file(Path(keep_from_file)))
+
+    return sorted(list(paths_to_keep))
 
 
 @click.command()
@@ -54,16 +66,7 @@ def main(
 ):
     """Sync filtered commits from private to public repository."""
 
-    # Collect all paths to keep
-    paths_to_keep = list(keep)
-
-    # Add paths from file if specified
-    if keep_from_file:
-        paths_to_keep.extend(read_paths_from_file(Path(keep_from_file)))
-
-    # Remove duplicates while preserving order
-    seen = set()
-    paths_to_keep = [x for x in paths_to_keep if not (x in seen or seen.add(x))]
+    paths_to_keep = collect_paths_to_keep(keep, keep_from_file)
 
     if not paths_to_keep:
         raise click.ClickException(
