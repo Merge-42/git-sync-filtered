@@ -1,0 +1,144 @@
+import os
+import subprocess
+
+
+def test_sync_full_flow(tmp_path):
+    """Integration test for sync function."""
+    private_repo = tmp_path / "private_source"
+    private_repo.mkdir()
+    (private_repo / "src").mkdir()
+    (private_repo / "src" / "main.py").write_text("print('hello')")
+    (private_repo / "docs").mkdir()
+    (private_repo / "docs" / "README.md").write_text("# Docs")
+    (private_repo / "secrets").mkdir()
+    (private_repo / "secrets" / "password.txt").write_text("password!")
+
+    subprocess.run(["git", "init"], cwd=private_repo, check=True)
+    subprocess.run(["git", "add", "."], cwd=private_repo, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "initial"],
+        cwd=private_repo,
+        check=True,
+        env={
+            **os.environ,
+            "GIT_AUTHOR_NAME": "Test",
+            "GIT_AUTHOR_EMAIL": "test@test.com",
+            "GIT_COMMITTER_NAME": "Test",
+            "GIT_COMMITTER_EMAIL": "test@test.com",
+        },
+    )
+
+    public_repo = tmp_path / "public_repo"
+    public_repo.mkdir()
+    subprocess.run(["git", "init", "--bare"], cwd=public_repo, check=True)
+
+    from git_sync_filtered.sync import sync
+
+    result = sync(
+        private=str(private_repo),
+        public=str(public_repo),
+        keep=("src", "docs"),
+        keep_from_file=None,
+        sync_branch="upstream/sync",
+        main_branch="main",
+        private_branch="main",
+        dry_run=False,
+        merge=False,
+        force=False,
+    )
+
+    assert result["paths_to_keep"] == ["docs", "src"]
+    assert result["dry_run_commits"] == []
+    assert result["merge_success"] is None
+
+    cloned = tmp_path / "check_public"
+    subprocess.run(["git", "clone", str(public_repo), str(cloned)], check=True)
+    subprocess.run(["git", "checkout", "upstream/sync"], cwd=cloned, check=True)
+
+    assert (cloned / "src" / "main.py").exists()
+    assert (cloned / "docs" / "README.md").exists()
+    assert not (cloned / "secrets").exists()
+
+
+def test_sync_dry_run(tmp_path):
+    """Integration test for sync function with dry_run=True."""
+    private_repo = tmp_path / "private_source"
+    private_repo.mkdir()
+    (private_repo / "src").mkdir()
+    (private_repo / "src" / "main.py").write_text("print('hello')")
+
+    subprocess.run(["git", "init"], cwd=private_repo, check=True)
+    subprocess.run(["git", "add", "."], cwd=private_repo, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "initial"],
+        cwd=private_repo,
+        check=True,
+        env={
+            **os.environ,
+            "GIT_AUTHOR_NAME": "Test",
+            "GIT_AUTHOR_EMAIL": "test@test.com",
+            "GIT_COMMITTER_NAME": "Test",
+            "GIT_COMMITTER_EMAIL": "test@test.com",
+        },
+    )
+
+    public_repo = tmp_path / "public_repo"
+    public_repo.mkdir()
+    subprocess.run(["git", "init", "--bare"], cwd=public_repo, check=True)
+
+    from git_sync_filtered.sync import sync
+
+    result = sync(
+        private=str(private_repo),
+        public=str(public_repo),
+        keep=("src",),
+        keep_from_file=None,
+        sync_branch="upstream/sync",
+        main_branch="main",
+        private_branch="main",
+        dry_run=True,
+        merge=False,
+        force=False,
+    )
+
+    assert result["paths_to_keep"] == ["src"]
+    assert len(result["dry_run_commits"]) == 1
+    assert "initial" in result["dry_run_commits"][0]
+
+    cloned = tmp_path / "check_public"
+    subprocess.run(
+        ["git", "clone", str(public_repo), str(cloned)], check=True, capture_output=True
+    )
+
+    assert not (cloned / "src").exists()
+
+
+def test_sync_requires_keep_paths(tmp_path):
+    """Integration test that sync raises error when no paths provided."""
+    private_repo = tmp_path / "private_source"
+    private_repo.mkdir()
+
+    subprocess.run(["git", "init"], cwd=private_repo, check=True)
+
+    public_repo = tmp_path / "public_repo"
+    public_repo.mkdir()
+    subprocess.run(["git", "init", "--bare"], cwd=public_repo, check=True)
+
+    from git_sync_filtered.sync import sync
+
+    try:
+        sync(
+            private=str(private_repo),
+            public=str(public_repo),
+            keep=(),
+            keep_from_file=None,
+            sync_branch="upstream/sync",
+            main_branch="main",
+            private_branch="main",
+            dry_run=False,
+            merge=False,
+            force=False,
+        )
+        assert False, "Expected ValueError"
+    except ValueError as e:
+        assert "At least one --keep path" in str(e)
