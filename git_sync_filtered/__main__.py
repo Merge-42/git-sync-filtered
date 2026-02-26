@@ -82,6 +82,25 @@ def push_to_remote(
         return []
 
 
+def merge_into_main(
+    repo: git.Repo,
+    main_branch: str,
+    sync_branch: str,
+) -> bool:
+    repo.heads[main_branch].checkout()
+
+    try:
+        sync_head = repo.heads[sync_branch]
+        repo.index.merge_commit(sync_head, msg=f"Merge branch '{sync_branch}'")
+
+        repo.remote("public").push(
+            refspec=f"refs/heads/{main_branch}:refs/heads/{main_branch}"
+        )
+        return True
+    except git.GitCommandError:
+        return False
+
+
 @click.command()
 @click.option("--private", required=True, help="Private repo path or URL")
 @click.option("--public", required=True, help="Public repo path or URL")
@@ -160,22 +179,11 @@ def main(
         if merge and not dry_run:
             click.echo(f"[git-sync] Merging into {main_branch}...")
 
-            # Checkout main
-            private_repo.heads[main_branch].checkout()
+            success = merge_into_main(private_repo, main_branch, sync_branch)
 
-            try:
-                # Merge sync branch into main
-                sync_head = private_repo.heads[sync_branch]
-                private_repo.index.merge_commit(
-                    sync_head, msg=f"Merge branch '{sync_branch}'"
-                )
-
-                # Push merged result
-                private_repo.remote("public").push(
-                    refspec=f"refs/heads/{main_branch}:refs/heads/{main_branch}"
-                )
+            if success:
                 click.echo(f"[git-sync] Merged and pushed to {main_branch}")
-            except git.GitCommandError:
+            else:
                 click.echo("[git-sync] Merge conflict! Please resolve manually:")
                 click.echo(f"  cd {private_clone}")
                 click.echo(f"  git checkout {main_branch}")
