@@ -4,6 +4,15 @@ import subprocess
 
 def test_sync_full_flow(tmp_path):
     """Integration test for sync function."""
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "Test",
+        "GIT_AUTHOR_EMAIL": "test@test.com",
+        "GIT_COMMITTER_NAME": "Test",
+        "GIT_COMMITTER_EMAIL": "test@test.com",
+        "GIT_DEFAULT_BRANCH": "main",
+    }
+
     private_repo = tmp_path / "private_source"
     private_repo.mkdir()
     (private_repo / "src").mkdir()
@@ -13,24 +22,18 @@ def test_sync_full_flow(tmp_path):
     (private_repo / "secrets").mkdir()
     (private_repo / "secrets" / "password.txt").write_text("password!")
 
-    subprocess.run(["git", "init"], cwd=private_repo, check=True)
-    subprocess.run(["git", "add", "."], cwd=private_repo, check=True)
+    subprocess.run(["git", "init"], cwd=private_repo, check=True, env=env)
+    subprocess.run(["git", "add", "."], cwd=private_repo, check=True, env=env)
     subprocess.run(
         ["git", "commit", "-m", "initial"],
         cwd=private_repo,
         check=True,
-        env={
-            **os.environ,
-            "GIT_AUTHOR_NAME": "Test",
-            "GIT_AUTHOR_EMAIL": "test@test.com",
-            "GIT_COMMITTER_NAME": "Test",
-            "GIT_COMMITTER_EMAIL": "test@test.com",
-        },
+        env=env,
     )
 
     public_repo = tmp_path / "public_repo"
     public_repo.mkdir()
-    subprocess.run(["git", "init", "--bare"], cwd=public_repo, check=True)
+    subprocess.run(["git", "init", "--bare"], cwd=public_repo, check=True, env=env)
 
     from git_sync_filtered.sync import sync
 
@@ -52,8 +55,10 @@ def test_sync_full_flow(tmp_path):
     assert result["merge_success"] is None
 
     cloned = tmp_path / "check_public"
-    subprocess.run(["git", "clone", str(public_repo), str(cloned)], check=True)
-    subprocess.run(["git", "checkout", "upstream/sync"], cwd=cloned, check=True)
+    subprocess.run(["git", "clone", str(public_repo), str(cloned)], check=True, env=env)
+    subprocess.run(
+        ["git", "checkout", "upstream/sync"], cwd=cloned, check=True, env=env
+    )
 
     assert (cloned / "src" / "main.py").exists()
     assert (cloned / "docs" / "README.md").exists()
@@ -62,29 +67,32 @@ def test_sync_full_flow(tmp_path):
 
 def test_sync_dry_run(tmp_path):
     """Integration test for sync function with dry_run=True."""
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "Test",
+        "GIT_AUTHOR_EMAIL": "test@test.com",
+        "GIT_COMMITTER_NAME": "Test",
+        "GIT_COMMITTER_EMAIL": "test@test.com",
+        "GIT_DEFAULT_BRANCH": "main",
+    }
+
     private_repo = tmp_path / "private_source"
     private_repo.mkdir()
     (private_repo / "src").mkdir()
     (private_repo / "src" / "main.py").write_text("print('hello')")
 
-    subprocess.run(["git", "init"], cwd=private_repo, check=True)
-    subprocess.run(["git", "add", "."], cwd=private_repo, check=True)
+    subprocess.run(["git", "init"], cwd=private_repo, check=True, env=env)
+    subprocess.run(["git", "add", "."], cwd=private_repo, check=True, env=env)
     subprocess.run(
         ["git", "commit", "-m", "initial"],
         cwd=private_repo,
         check=True,
-        env={
-            **os.environ,
-            "GIT_AUTHOR_NAME": "Test",
-            "GIT_AUTHOR_EMAIL": "test@test.com",
-            "GIT_COMMITTER_NAME": "Test",
-            "GIT_COMMITTER_EMAIL": "test@test.com",
-        },
+        env=env,
     )
 
     public_repo = tmp_path / "public_repo"
     public_repo.mkdir()
-    subprocess.run(["git", "init", "--bare"], cwd=public_repo, check=True)
+    subprocess.run(["git", "init", "--bare"], cwd=public_repo, check=True, env=env)
 
     from git_sync_filtered.sync import sync
 
@@ -107,7 +115,10 @@ def test_sync_dry_run(tmp_path):
 
     cloned = tmp_path / "check_public"
     subprocess.run(
-        ["git", "clone", str(public_repo), str(cloned)], check=True, capture_output=True
+        ["git", "clone", str(public_repo), str(cloned)],
+        check=True,
+        env=env,
+        capture_output=True,
     )
 
     assert not (cloned / "src").exists()
