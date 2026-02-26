@@ -8,10 +8,9 @@ Usage:
     git-sync-filtered --private /path/to/private --public /path/to/public --keep src --keep docs
 """
 
-import shutil
-import tempfile
 from itertools import filterfalse
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Optional
 
 import click
@@ -35,7 +34,7 @@ def collect_paths_to_keep(
     return sorted(list(paths_to_keep))
 
 
-def run_filter_repo(repo_path: Path, paths_to_keep: list[str]) -> None:
+def run_filter_repo(repo_path: str, paths_to_keep: list[str]) -> None:
     import os
 
     old_cwd = os.getcwd()
@@ -147,10 +146,10 @@ def main(
     click.echo()
 
     # Create temp directory
-    work_dir = Path(tempfile.mkdtemp(prefix="git-sync-"))
-    click.echo(f"[git-sync] Working in: {work_dir}")
+    with TemporaryDirectory(prefix="git-sync-") as work_dir:
+        work_dir = Path(work_dir)
+        click.echo(f"[git-sync] Working in: {work_dir}")
 
-    try:
         # Clone private repo using GitPython
         private_clone = work_dir / "private"
         click.echo(f"[git-sync] Cloning private repo to {private_clone}...")
@@ -193,10 +192,6 @@ def main(
 
         click.echo()
         click.echo("Done!")
-
-    finally:
-        # Cleanup
-        shutil.rmtree(work_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":
