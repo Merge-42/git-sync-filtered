@@ -1,6 +1,14 @@
 # git-sync-filtered
 
+![GitHub Repo stars](https://img.shields.io/github/stars/Merge-42/git-sync-filtered?style=social)
+![Python versions](https://img.shields.io/pypi/pyversions/git-sync-filtered)
+![License](https://img.shields.io/pypi/l/git-sync-filtered)
+
 A thin wrapper around [git-filter-repo](https://github.com/newren/git-filter-repo) for syncing filtered commits from a private repository to a public repository.
+
+## Overview
+
+git-sync-filtered clones a private repository, filters it to only include specified paths using git-filter-repo, and pushes the result to a public repository's sync branch. This enables maintaining a public subset of a private repository while preserving commit history.
 
 ## Installation
 
@@ -36,9 +44,9 @@ git-sync-filtered \
   --keep docs
 ```
 
-Or use a file to specify paths:
+### Using a paths file
 
-### paths.txt
+Create a file with paths to keep (one per line, lines starting with `#` are comments):
 
 ```text
 src
@@ -53,20 +61,22 @@ git-sync-filtered \
   --keep-from-file paths.txt
 ```
 
-### Options
+## Options
 
-- `--private` - Private repo path or URL (required)
-- `--public` - Public repo path or URL (required)
-- `--keep` - Paths to keep (can specify multiple, required)
-- `--keep-from-file` - File containing paths to keep (one per line, lines starting with # are comments)
-- `--sync-branch` - Sync branch name (default: upstream/sync)
-- `--main-branch` - Main branch name (default: main)
-- `--private-branch` - Private branch to sync from (default: main)
-- `--dry-run` - Show what would happen without making changes
-- `--merge` - Merge into main branch after sync
-- `--force` - Force push
+| Option             | Description                                   | Default         |
+| ------------------ | --------------------------------------------- | --------------- |
+| `--private`        | Private repo path or URL                      | Required        |
+| `--public`         | Public repo path or URL                       | Required        |
+| `--keep`           | Paths to keep (specify multiple)              | Required        |
+| `--keep-from-file` | File containing paths to keep                 | -               |
+| `--sync-branch`    | Sync branch name                              | `upstream/sync` |
+| `--main-branch`    | Main branch name                              | `main`          |
+| `--private-branch` | Private branch to sync from                   | `main`          |
+| `--dry-run`        | Show what would happen without making changes | `false`         |
+| `--merge`          | Merge into main branch after sync             | `false`         |
+| `--force`          | Force push                                    | `false`         |
 
-## How it works
+## How It Works
 
 1. Clones the private repository
 2. Runs git-filter-repo to filter to only the specified paths
@@ -88,3 +98,7 @@ flowchart LR
 
 - Python 3.10+
 - git >= 2.36.0
+
+---
+
+Sponsored by [Merge 42](https://merge42.com)
