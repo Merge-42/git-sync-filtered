@@ -15,23 +15,23 @@ git-sync-filtered clones a private repository, filters it to only include specif
 ### uv (recommended)
 
 ```bash
-uv tool install git+https://github.com/Merge-42/git-sync-filtered
-```
-
-### uvx (run without installing)
-
-```bash
-uvx git+https://github.com/Merge-42/git-sync-filtered \
-  --private git@github.com:org/private.git \
-  --public git@github.com:org/public.git \
-  --keep src \
-  --keep docs
+uv tool install git-sync-filtered
 ```
 
 ### pip
 
 ```bash
-pip install git+https://github.com/Merge-42/git-sync-filtered
+pip install git-sync-filtered
+```
+
+### uvx (run without installing)
+
+```bash
+uvx git-sync-filtered \
+  --private git@github.com:org/private.git \
+  --public git@github.com:org/public.git \
+  --keep src \
+  --keep docs
 ```
 
 ## Usage
