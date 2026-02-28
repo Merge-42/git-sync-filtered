@@ -1,12 +1,13 @@
 import os
 import subprocess
+from pathlib import Path
 
 
-def run_git(cwd, *args, env=None):
+def run_git(cwd: Path, *args: str, env: dict[str, str] | None = None) -> None:
     subprocess.run(["git", *args], cwd=cwd, check=True, env=env)
 
 
-def test_full_sync_flow(tmp_path):
+def test_full_sync_flow(tmp_path: Path) -> None:
     """Integration test covering the full main() flow."""
     env = {
         **os.environ,
@@ -68,7 +69,7 @@ def test_full_sync_flow(tmp_path):
     assert not (cloned / "secrets").exists()
 
 
-def test_dry_run(tmp_path):
+def test_dry_run(tmp_path: Path) -> None:
     """Integration test for dry-run mode."""
     env = {
         **os.environ,

@@ -2,10 +2,16 @@ import os
 from itertools import filterfalse
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Optional
+from typing import Optional, TypedDict
 
 import git
 from git_filter_repo import FilteringOptions, RepoFilter
+
+
+class SyncResult(TypedDict):
+    paths_to_keep: list[str]
+    dry_run_commits: list[str]
+    merge_success: bool | None
 
 
 def read_paths_from_file(path: Path) -> list[str]:
@@ -24,7 +30,7 @@ def collect_paths_to_keep(
     return sorted(list(paths_to_keep))
 
 
-def run_filter_repo(repo_path: str, paths_to_keep: list[str]) -> None:
+def run_filter_repo(repo_path: Path | str, paths_to_keep: list[str]) -> None:
     old_cwd = os.getcwd()
     os.chdir(repo_path)
 
@@ -96,7 +102,7 @@ def sync(
     dry_run: bool,
     merge: bool,
     force: bool,
-):
+) -> SyncResult:
     paths_to_keep = collect_paths_to_keep(keep, keep_from_file)
 
     if not paths_to_keep:

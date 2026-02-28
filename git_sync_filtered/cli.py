@@ -21,17 +21,17 @@ from git_sync_filtered.sync import sync
 @click.option("--merge", is_flag=True, help="Merge into main branch after sync")
 @click.option("--force", is_flag=True, help="Force push")
 def main(
-    private,
-    public,
-    keep,
-    keep_from_file,
-    sync_branch,
-    main_branch,
-    private_branch,
-    dry_run,
-    merge,
-    force,
-):
+    private: str,
+    public: str,
+    keep: tuple[str, ...],
+    keep_from_file: str | None,
+    sync_branch: str,
+    main_branch: str,
+    private_branch: str,
+    dry_run: bool,
+    merge: bool,
+    force: bool,
+) -> None:
     """Sync filtered commits from private to public repository."""
 
     try:
