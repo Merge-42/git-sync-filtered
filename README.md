@@ -1,8 +1,10 @@
 # git-sync-filtered
 
 ![GitHub Repo stars](https://img.shields.io/github/stars/Merge-42/git-sync-filtered?style=social)
-![Python versions](https://img.shields.io/pypi/pyversions/git-sync-filtered)
-![License](https://img.shields.io/pypi/l/git-sync-filtered)
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/Merge-42/git-sync-filtered/python_ci.yaml)
+![Supported Python versions](https://img.shields.io/pypi/pyversions/git-sync-filtered)
+![GitHub Release](https://img.shields.io/github/v/release/Merge-42/git-sync-filtered)
+![License](https://img.shields.io/github/license/Merge-42/git-sync-filtered)
 
 A thin wrapper around [git-filter-repo](https://github.com/newren/git-filter-repo) for syncing filtered commits from a private repository to a public repository.
 
