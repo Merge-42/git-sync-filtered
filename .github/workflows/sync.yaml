@@ -1,0 +1,95 @@
+name: Sync to Public Repo
+
+on:
+  workflow_call:
+    inputs:
+      private_repo:
+        required: true
+        type: string
+        description: Private repository URL
+      public_repo:
+        required: true
+        type: string
+        description: Public repository URL
+      keep:
+        required: false
+        type: string
+        default: src
+        description: Space-separated paths to keep
+      keep_from_file:
+        required: false
+        type: string
+        default: ""
+        description: File containing paths to keep
+      sync_branch:
+        required: false
+        type: string
+        default: upstream/sync
+        description: Sync branch name
+      main_branch:
+        required: false
+        type: string
+        default: main
+        description: Main branch name
+      private_branch:
+        required: false
+        type: string
+        default: main
+        description: Private branch to sync from
+      merge:
+        required: false
+        type: boolean
+        default: false
+        description: Merge into main after sync
+      force:
+        required: false
+        type: boolean
+        default: false
+        description: Force push
+      dry_run:
+        required: false
+        type: boolean
+        default: false
+        description: Dry run mode
+    secrets:
+      GH_TOKEN:
+        required: true
+        description: GitHub token with push access to public repo
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install git-sync-filtered
+        run: pip install git-sync-filtered
+
+      - name: Sync filtered repo
+        run: |
+          ARGS=(
+            --private "${{ inputs.private_repo }}"
+            --public "${{ inputs.public_repo }}"
+            --sync-branch "${{ inputs.sync_branch }}"
+            --main-branch "${{ inputs.main_branch }}"
+            --private-branch "${{ inputs.private_branch }}"
+          )
+
+          if [ -n "${{ inputs.keep_from_file }}" ]; then
+            ARGS+=(--keep-from-file "${{ inputs.keep_from_file }}")
+          fi
+
+          if [ -n "${{ inputs.keep }}" ]; then
+            for path in ${{ inputs.keep }}; do
+              ARGS+=(--keep "$path")
+            done
+          fi
+
+          [ "${{ inputs.merge }}" = "true" ] && ARGS+=(--merge)
+          [ "${{ inputs.force }}" = "true" ] && ARGS+=(--force)
+          [ "${{ inputs.dry_run }}" = "true" ] && ARGS+=(--dry-run)
+
+          git-sync-filtered "${ARGS[@]}"
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
