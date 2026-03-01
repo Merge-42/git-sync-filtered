@@ -52,7 +52,7 @@ on:
 
 jobs:
   sync:
-    uses: Merge-42/git-sync-filtered/.github/workflows/sync.yaml@v0.1.3
+    uses: Merge-42/git-sync-filtered/.github/workflows/sync.yaml@v0.1.4
     with:
       private_repo: ${{ github.repositoryUrl }}
       public_repo: git@github.com:org/public.git
