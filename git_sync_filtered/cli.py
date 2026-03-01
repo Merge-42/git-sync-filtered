@@ -1,6 +1,50 @@
+from fnmatch import translate as glob_translate
+from pathlib import Path
+
 import click
+from pydantic import BaseModel, ConfigDict, FilePath, field_validator
 
 from git_sync_filtered.sync import sync
+
+
+class SyncConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    private: str
+    public: str
+    keep: tuple[str, ...]
+    keep_from_file: FilePath | None = None
+    sync_branch: str = "upstream/sync"
+    main_branch: str = "main"
+    private_branch: str = "main"
+    dry_run: bool = False
+    merge: bool = False
+    force: bool = False
+
+    @field_validator("keep", mode="before")
+    @classmethod
+    def ensure_non_empty(cls, v: tuple[str, ...]) -> tuple[str, ...]:
+        if not v:
+            raise ValueError("At least one --keep path required")
+        return v
+
+    @field_validator("keep", mode="after")
+    @classmethod
+    def validate_glob_paths(cls, v: tuple[str, ...]) -> tuple[str, ...]:
+        for path in v:
+            if not path:
+                raise ValueError("Keep path cannot be empty")
+            glob_translate(path)
+        return v
+
+    @field_validator("sync_branch", "main_branch", "private_branch", mode="after")
+    @classmethod
+    def validate_branch_name(cls, v: str) -> str:
+        if not v:
+            raise ValueError("Branch name cannot be empty")
+        if v.startswith("/") or ".." in v:
+            raise ValueError(f"Invalid branch name: {v!r}")
+        return v
 
 
 @click.command()
@@ -35,17 +79,29 @@ def main(
     """Sync filtered commits from private to public repository."""
 
     try:
-        result = sync(
+        config = SyncConfig(
             private=private,
             public=public,
             keep=keep,
-            keep_from_file=keep_from_file,
+            keep_from_file=Path(keep_from_file) if keep_from_file else None,
             sync_branch=sync_branch,
             main_branch=main_branch,
             private_branch=private_branch,
             dry_run=dry_run,
             merge=merge,
             force=force,
+        )
+        result = sync(
+            private=config.private,
+            public=config.public,
+            keep=config.keep,
+            keep_from_file=config.keep_from_file,
+            sync_branch=config.sync_branch,
+            main_branch=config.main_branch,
+            private_branch=config.private_branch,
+            dry_run=config.dry_run,
+            merge=config.merge,
+            force=config.force,
         )
     except ValueError as e:
         raise click.ClickException(str(e))

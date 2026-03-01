@@ -14,7 +14,7 @@ def test_collect_paths_to_keep_combines_args_and_file(tmp_path: Path) -> None:
 
     result = collect_paths_to_keep(
         keep=("src",),
-        keep_from_file=str(file_path),
+        keep_from_file=file_path,
     )
 
     assert result == ["lib", "src", "tests"]

@@ -22,7 +22,12 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
 ]
 
-dependencies = ["click>=8.0", "gitpython>=3.1", "git-filter-repo>=2.0"]
+dependencies = [
+  "click>=8.0",
+  "gitpython>=3.1",
+  "git-filter-repo>=2.0",
+  "pydantic>=2.12.5",
+]
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff", "mypy"]
@@ -37,7 +42,7 @@ include = ["git_sync_filtered*"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-select = ["E", "F", "ANN"]
+lint.select = ["E", "F", "ANN"]
 
 [dependency-groups]
 dev = ["pytest>=9.0.2"]
