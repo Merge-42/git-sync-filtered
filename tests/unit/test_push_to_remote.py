@@ -1,12 +1,13 @@
 from unittest.mock import MagicMock
 
 import pytest
+from git import Repo
 
 from git_sync_filtered.sync import push_to_remote
 
 
 @pytest.fixture
-def mock_repo():
+def mock_repo() -> Repo:
     repo = MagicMock()
     repo.remotes = []
     mock_remote = MagicMock()
@@ -15,7 +16,7 @@ def mock_repo():
     return repo
 
 
-def test_push_to_remote_creates_remote_when_not_exists(mock_repo):
+def test_push_to_remote_creates_remote_when_not_exists(mock_repo: Repo) -> None:
     mock_repo.remotes = []
 
     push_to_remote(
@@ -32,7 +33,7 @@ def test_push_to_remote_creates_remote_when_not_exists(mock_repo):
     mock_repo.remote("public").push.assert_called_once()
 
 
-def test_push_to_remote_updates_url_when_exists(mock_repo):
+def test_push_to_remote_updates_url_when_exists(mock_repo: Repo) -> None:
     mock_repo.remotes = ["public"]
 
     push_to_remote(
@@ -48,7 +49,7 @@ def test_push_to_remote_updates_url_when_exists(mock_repo):
     mock_repo.create_remote.assert_not_called()
 
 
-def test_push_to_remote_dry_run_returns_commits(mock_repo):
+def test_push_to_remote_dry_run_returns_commits(mock_repo: Repo) -> None:
     mock_commit = MagicMock()
     mock_commit.hexsha = "abc123def"
     mock_commit.summary = "Initial commit"
@@ -66,7 +67,7 @@ def test_push_to_remote_dry_run_returns_commits(mock_repo):
     mock_repo.remote("public").push.assert_not_called()
 
 
-def test_push_to_remote_uses_force(mock_repo):
+def test_push_to_remote_uses_force(mock_repo: Repo) -> None:
     push_to_remote(
         repo=mock_repo,
         public_url="https://github.com/user/public.git",
@@ -79,7 +80,7 @@ def test_push_to_remote_uses_force(mock_repo):
     assert call_kwargs["force"] is True
 
 
-def test_push_to_remote_builds_correct_refspec(mock_repo):
+def test_push_to_remote_builds_correct_refspec(mock_repo: Repo) -> None:
     push_to_remote(
         repo=mock_repo,
         public_url="https://github.com/user/public.git",

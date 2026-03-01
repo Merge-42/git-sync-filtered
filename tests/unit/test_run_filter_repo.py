@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -6,7 +7,7 @@ from git_sync_filtered.sync import run_filter_repo
 
 
 @pytest.fixture
-def mock_filter_repo():
+def mock_filter_repo() -> tuple[MagicMock, MagicMock]:
     with (
         patch("git_sync_filtered.sync.FilteringOptions") as mock_options,
         patch("git_sync_filtered.sync.RepoFilter") as mock_filter,
@@ -16,7 +17,9 @@ def mock_filter_repo():
         yield mock_options, mock_filter_instance
 
 
-def test_run_filter_repo_restores_cwd(tmp_path, mock_filter_repo):
+def test_run_filter_repo_restores_cwd(
+    tmp_path: Path, mock_filter_repo: tuple[MagicMock, MagicMock]
+) -> None:
     import os
 
     original_cwd = os.getcwd()
@@ -28,7 +31,9 @@ def test_run_filter_repo_restores_cwd(tmp_path, mock_filter_repo):
     assert os.getcwd() == original_cwd
 
 
-def test_run_filter_repo_builds_correct_argv(tmp_path, mock_filter_repo):
+def test_run_filter_repo_builds_correct_argv(
+    tmp_path: Path, mock_filter_repo: tuple[MagicMock, MagicMock]
+) -> None:
     mock_options, mock_filter_instance = mock_filter_repo
 
     repo_path = tmp_path / "repo"

@@ -1,9 +1,10 @@
 import subprocess
+from pathlib import Path
 
 from git_sync_filtered.sync import run_filter_repo
 
 
-def test_run_filter_repo_filters_correctly(tmp_path):
+def test_run_filter_repo_filters_correctly(tmp_path: Path) -> None:
     repo_path = tmp_path / "repo"
     repo_path.mkdir()
 

@@ -1,12 +1,13 @@
 import os
 import subprocess
+from pathlib import Path
 
 
-def run_git(cwd, *args, env=None):
+def run_git(cwd: Path, *args: str, env: dict[str, str] | None = None) -> None:
     subprocess.run(["git", *args], cwd=cwd, check=True, env=env)
 
 
-def test_sync_full_flow(tmp_path):
+def test_sync_full_flow(tmp_path: Path) -> None:
     """Integration test for sync function."""
     env = {
         **os.environ,
@@ -66,7 +67,7 @@ def test_sync_full_flow(tmp_path):
     assert not (cloned / "secrets").exists()
 
 
-def test_sync_dry_run(tmp_path):
+def test_sync_dry_run(tmp_path: Path) -> None:
     """Integration test for sync function with dry_run=True."""
     env = {
         **os.environ,
@@ -120,7 +121,7 @@ def test_sync_dry_run(tmp_path):
     assert not (cloned / "src").exists()
 
 
-def test_sync_requires_keep_paths(tmp_path):
+def test_sync_requires_keep_paths(tmp_path: Path) -> None:
     """Integration test that sync raises error when no paths provided."""
     private_repo = tmp_path / "private_source"
     private_repo.mkdir()

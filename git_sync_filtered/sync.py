@@ -2,10 +2,16 @@ import os
 from itertools import filterfalse
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Optional
+from typing import Optional, TypedDict
 
 import git
 from git_filter_repo import FilteringOptions, RepoFilter
+
+
+class SyncResult(TypedDict):
+    paths_to_keep: list[str]
+    dry_run_commits: list[str]
+    merge_success: bool | None
 
 
 def read_paths_from_file(path: Path) -> list[str]:
@@ -14,17 +20,17 @@ def read_paths_from_file(path: Path) -> list[str]:
 
 
 def collect_paths_to_keep(
-    keep: tuple[str, ...], keep_from_file: Optional[str]
+    keep: tuple[str, ...], keep_from_file: Optional[Path]
 ) -> list[str]:
-    paths_to_keep = set(keep)
+    paths_to_keep: set[str] = set(keep)
 
     if keep_from_file:
-        paths_to_keep.update(read_paths_from_file(Path(keep_from_file)))
+        paths_to_keep.update(read_paths_from_file(keep_from_file))
 
-    return sorted(list(paths_to_keep))
+    return sorted(paths_to_keep)
 
 
-def run_filter_repo(repo_path: str, paths_to_keep: list[str]) -> None:
+def run_filter_repo(repo_path: Path | str, paths_to_keep: list[str]) -> None:
     old_cwd = os.getcwd()
     os.chdir(repo_path)
 
@@ -89,14 +95,14 @@ def sync(
     private: str,
     public: str,
     keep: tuple[str, ...],
-    keep_from_file: Optional[str],
+    keep_from_file: Optional[Path],
     sync_branch: str,
     main_branch: str,
     private_branch: str,
     dry_run: bool,
     merge: bool,
     force: bool,
-):
+) -> SyncResult:
     paths_to_keep = collect_paths_to_keep(keep, keep_from_file)
 
     if not paths_to_keep:

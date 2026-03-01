@@ -1,8 +1,10 @@
 # git-sync-filtered
 
 ![GitHub Repo stars](https://img.shields.io/github/stars/Merge-42/git-sync-filtered?style=social)
-![Python versions](https://img.shields.io/pypi/pyversions/git-sync-filtered)
-![License](https://img.shields.io/pypi/l/git-sync-filtered)
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/Merge-42/git-sync-filtered/python_ci.yaml)
+![Supported Python versions](https://img.shields.io/pypi/pyversions/git-sync-filtered)
+![GitHub Release](https://img.shields.io/github/v/release/Merge-42/git-sync-filtered)
+![License](https://img.shields.io/github/license/Merge-42/git-sync-filtered)
 
 A thin wrapper around [git-filter-repo](https://github.com/newren/git-filter-repo) for syncing filtered commits from a private repository to a public repository.
 
@@ -33,6 +35,51 @@ uvx git-sync-filtered \
   --keep src \
   --keep docs
 ```
+
+## GitHub Actions
+
+You can use this workflow to sync from your private repo to a public repo when the private repo receives a push.
+
+In your **private repository**, create `.github/workflows/sync.yaml`:
+
+```yaml
+name: Sync to Public Repo
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  sync:
+    uses: Merge-42/git-sync-filtered/.github/workflows/sync.yaml@v0.1.4
+    with:
+      private_repo: ${{ github.repositoryUrl }}
+      public_repo: git@github.com:org/public.git
+      keep: src docs
+      merge: true
+    secrets:
+      GH_TOKEN: ${{ secrets.GH_PAT }}
+```
+
+Required secrets:
+
+- `GH_PAT` - A GitHub Personal Access Token with `repo` scope (for pushing to the public repo)
+
+Available inputs:
+
+| Input            | Description                   | Default         |
+| ---------------- | ----------------------------- | --------------- |
+| `private_repo`   | Private repository URL        | Required        |
+| `public_repo`    | Public repository URL         | Required        |
+| `keep`           | Space-separated paths to keep | -               |
+| `keep_from_file` | File containing paths to keep | -               |
+| `sync_branch`    | Sync branch name              | `upstream/sync` |
+| `main_branch`    | Main branch name              | `main`          |
+| `private_branch` | Private branch to sync from   | `main`          |
+| `merge`          | Merge into main after sync    | `false`         |
+| `force`          | Force push                    | `false`         |
+| `dry_run`        | Dry run mode                  | `false`         |
 
 ## Usage
 

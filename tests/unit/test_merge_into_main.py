@@ -1,12 +1,13 @@
 from unittest.mock import MagicMock
 
 import pytest
+from git import Repo
 
 from git_sync_filtered.sync import merge_into_main
 
 
 @pytest.fixture
-def mock_repo():
+def mock_repo() -> Repo:
     repo = MagicMock()
     mock_head = MagicMock()
     repo.heads = {"main": mock_head, "upstream/sync": MagicMock()}
@@ -14,25 +15,25 @@ def mock_repo():
     return repo
 
 
-def test_merge_into_main_checkouts_main_branch(mock_repo):
+def test_merge_into_main_checkouts_main_branch(mock_repo: Repo) -> None:
     merge_into_main(repo=mock_repo, main_branch="main", sync_branch="upstream/sync")
 
     mock_repo.heads["main"].checkout.assert_called_once()
 
 
-def test_merge_into_main_performs_merge(mock_repo):
+def test_merge_into_main_performs_merge(mock_repo: Repo) -> None:
     merge_into_main(repo=mock_repo, main_branch="main", sync_branch="upstream/sync")
 
     mock_repo.index.merge_commit.assert_called_once()
 
 
-def test_merge_into_main_pushes_on_success(mock_repo):
+def test_merge_into_main_pushes_on_success(mock_repo: Repo) -> None:
     merge_into_main(repo=mock_repo, main_branch="main", sync_branch="upstream/sync")
 
     mock_repo.remote("public").push.assert_called_once()
 
 
-def test_merge_into_main_returns_true_on_success(mock_repo):
+def test_merge_into_main_returns_true_on_success(mock_repo: Repo) -> None:
     result = merge_into_main(
         repo=mock_repo, main_branch="main", sync_branch="upstream/sync"
     )
@@ -40,7 +41,7 @@ def test_merge_into_main_returns_true_on_success(mock_repo):
     assert result is True
 
 
-def test_merge_into_main_returns_false_on_conflict(mock_repo):
+def test_merge_into_main_returns_false_on_conflict(mock_repo: Repo) -> None:
     import git
 
     mock_repo.index.merge_commit.side_effect = git.GitCommandError("merge", 1)
