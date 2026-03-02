@@ -68,142 +68,171 @@ The `--force` flag (line 71) only overwrites the branch, it doesn't prevent dupl
 
 ---
 
-## Recommended Remediation Plan
+## Answers from Requirements
 
-### Architecture
+| Question             | Answer                                                                            |
+| -------------------- | --------------------------------------------------------------------------------- |
+| New commits behavior | **Only new commits** (incremental sync)                                           |
+| State storage        | **Embed in commit messages** - append marker string to commit messages            |
+| Failure handling     | **Don't update marker on failure** - re-run from last successful sync             |
+| Concurrency          | **Lock via sync branch check** - verify sync branch doesn't exist before starting |
+| Force flag           | **Keep as-is** - existing behavior preserved                                      |
 
-To achieve true idempotency, implement a **commit tracking mechanism**:
+---
+
+## Revised Implementation Approach
+
+### Architecture: Commit Message Marker
+
+Instead of tracking state in a separate ref, embed the sync marker directly in commit messages:
 
 ```mermaid
-flowchart TB
-    subgraph Private["Private Repository"]
-        PMain["main<br/>(source branch)"]
-        PMarker["refs/sync/marker<br/>(last synced SHA)"]
+flowchart LR
+    subgraph Private["Private Repo"]
+        PC1["Commit A<br/>Add feature"]
+        PC2["Commit B<br/>Fix bug"]
     end
 
-    subgraph Public["Public Repository"]
-        PubMain["main<br/>(target branch)"]
-        PubSync["upstream/sync<br/>(synced commits)"]
-        PubMarker["refs/sync/marker<br/>(last synced SHA)"]
+    subgraph Public["Public Repo"]
+        Pub1["Commit A<br/>Add feature<br/>[synced: A-1]"]
+        Pub2["Commit B<br/>Fix bug<br/>[synced: B-1]"]
     end
 
-    Sync["git-sync-filtered<br/>(sync job)"]
+    PC1 -->|sync| Pub1
+    PC2 -->|sync| Pub2
 
-    PMain -->|clone| Sync
-    PubMarker -->|fetch| Sync
-    Sync -->|filter & push new commits| PubSync
-    Sync -->|update marker| PubMarker
-
-    PubSync -->|merge| PubMain
+    style Private fill:#e1f5fe
+    style Public fill:#e8f5e8
 ```
+
+**Marker format**: `[synced: <private-commit-sha>]` appended to commit message
 
 ### How It Works
 
-1. **First Run**: No marker exists → sync ALL commits from private main → create marker with latest SHA
+1. **First Run**: No marker found → sync ALL commits → append marker to each commit message
 2. **Subsequent Runs**:
-   - Fetch marker from public repo to get last synced SHA
-   - Only fetch/filter commits newer than marker
-   - Push new commits to sync branch
-   - Update marker with new latest SHA
+   - Parse commit messages to find last marker (`[synced: <sha>]`)
+   - Only fetch/filter commits newer than marked SHA
+   - Push new commits with updated markers
+3. **Marker Format**: `[synced: <private-commit-sha>]` appended to commit message
 
-### Implementation Options
+### Advantages
 
-#### Option A: Track in Public Repo (Recommended)
+- **No separate state tracking** - marker travels with commits
+- **Self-contained** - public repo contains all sync state
+- **Simpler implementation** - no refs/branch management needed
 
-- Store the last synced commit SHA in a dedicated ref in the public repo (e.g., `refs/sync/marker`)
-- On each run:
-  1. Fetch the marker ref to get last synced commit
-  2. Only fetch commits newer than that SHA
-  3. Filter and push new commits
-  4. Update marker ref with latest SHA
-
-**Pros:**
-
-- Self-contained (state stays with the repos)
-- Works with any remote setup
-
-**Cons:**
-
-- Requires extra fetch/push operations
-
-#### Option B: Use git-filter-repo --state-branch
-
-- Leverage git-filter-repo's built-in `--state-branch` feature for incremental filtering
-- Store filter state in a dedicated branch in the public repo
-- On each run:
-  1. Clone private repo
-  2. Import state from previous run (if exists)
-  3. Run filter-repo with --state-branch
-  4. Export state to public repo
-
-**Pros:**
-
-- Built-in git-filter-repo support
-- Handles commit tracking internally
-
-**Cons:**
-
-- More complex state management
-- git-filter-repo state may not handle all edge cases
-
-#### Option C: Track in Private Repo
-
-- Store marker in private repo (e.g., as a tag or branch)
-- On each run:
-  1. Clone private repo (or fetch only new commits)
-  2. Find commits since last marker
-  3. Filter and push new commits
-  4. Update marker in private repo
-
-**Pros:**
-
-- Simpler initial clone
-
-**Cons:**
-
-- Modifies private repo (may not be desired)
-
-#### Option D: External State File
-
-- Store last synced SHA in an external file (local or cloud storage)
-- Pass via `--last-synced-sha` CLI option
-
-**Pros:**
-
-- Full control over state
-
-**Cons:**
-
-- Requires external state management
-- Less portable
-
-### Implementation Steps (Option A)
+### Implementation Steps
 
 1. **Add CLI options**:
-   - `--sync-marker-ref` (default: `refs/sync/marker`)
-   - Optional: `--reset` to restart sync from beginning
+   - `--marker-prefix` (default: `synced`)
+   - `--reset` to restart sync from beginning
 
 2. **Modify `sync()` function**:
-   - Fetch sync marker ref from public remote
-   - Determine base commit (last synced or initial)
-   - Create a new branch from that commit point
-   - Filter only new commits
-   - Push new commits
-   - Update marker ref
+   - Before filtering: Parse commit messages to find last synced SHA
+   - Filter only commits after last synced SHA (using git's `--since` or commit range)
+   - After filtering: Rewrite commit messages to append marker
+   - On failure: Don't update commit messages
 
 3. **Handle edge cases**:
-   - First run (no marker exists) - sync all commits
-   - Marker points to commit not in current branch - error or reset
-   - Partial failure mid-sync - don't update marker
+   - First run (no marker) - sync all commits
+   - Marker points to missing commit - error or reset
+   - Commit message too long - truncate marker if needed
+
+4. **Implement locking**:
+   - Before sync: Check if sync branch already exists in public repo
+   - If exists: Abort with "sync in progress" error
+   - After successful sync: Delete or complete sync branch
+
+5. **Hash verification (post-sync check)**:
+   - After successful sync, verify file integrity by comparing hashes
+   - Use `git ls-tree` to get object hashes for tracked files
+   - Compare private repo filtered files against public repo synced files
+   - Fail/warn if hashes don't match (indicates missed changes)
+
+### Hash Verification Details
+
+**Purpose**: Ensure synced files match the expected filtered content from private repo.
+
+**Implementation approach**:
+
+```python
+def verify_sync_integrity(
+    private_repo: git.Repo,
+    public_repo: git.Repo,
+    paths_to_keep: list[str],
+) -> bool:
+    """
+    Verify that synced files in public repo match filtered files from private repo.
+    Returns True if hashes match, False otherwise.
+    """
+    def get_file_hashes(repo: git.Repo, paths: list[str]) -> dict[str, str]:
+        """Get SHA-1 hashes for files using git ls-tree."""
+        hashes = {}
+        for path in paths:
+            # Use git ls-tree to get object hashes
+            result = repo.git.ls_tree("-r", "HEAD", "--", path)
+            for line in result.splitlines():
+                parts = line.split()
+                if len(parts) >= 3:
+                    file_path = parts[3]
+                    obj_hash = parts[2]
+                    hashes[file_path] = obj_hash
+        return hashes
+
+    private_hashes = get_file_hashes(private_repo, paths_to_keep)
+    public_hashes = get_file_hashes(public_repo, paths_to_keep)
+
+    return private_hashes == public_hashes
+```
+
+**When to run**:
+
+- After sync completes successfully
+- Before updating markers (so failed verification doesn't lose sync state)
+
+**On failure**:
+
+- Log warning/error
+- Don't update markers (allows re-sync attempt)
+- Alert user to investigate
+
+### Concurrency Control
+
+```mermaid
+sequenceDiagram
+    participant A as Sync Job A
+    participant B as Sync Job B
+    participant Pub as Public Repo
+
+    A->>Pub: Check sync_branch exists?
+    Note over A,Pub: (doesn't exist)
+    B->>Pub: Check sync_branch exists?
+    Note over B,Pub: (doesn't exist)
+    A->>Pub: Create sync_branch
+    A->>Pub: Filter & push commits
+    A->>Pub: Merge to main
+    A->>Pub: Delete sync_branch
+    Note over A: DONE
+    B->>Pub: Check sync_branch exists?
+    Note over B,Pub: (exists!)
+    B-->>B: ABORT: "sync in progress"
+```
+
+**Lock mechanism**:
+
+- Before sync: Check if sync branch already exists in public repo
+- If exists: Abort with "sync in progress" error
+- After successful sync: Delete or complete sync branch
 
 ### File Changes Required
 
-| File                             | Changes                                    |
-| -------------------------------- | ------------------------------------------ |
-| `cli.py`                         | Add `--sync-marker-ref`, `--reset` options |
-| `sync.py`                        | Add idempotency logic in `sync()` function |
-| `tests/integration/test_sync.py` | Add idempotency tests                      |
-| `tests/unit/...`                 | Add unit tests for new functions           |
+| File                             | Changes                                                                      |
+| -------------------------------- | ---------------------------------------------------------------------------- |
+| `cli.py`                         | Add `--marker-prefix`, `--reset` options                                     |
+| `sync.py`                        | Add commit message parsing, marker appending, incremental filtering, locking |
+| `tests/integration/test_sync.py` | Add idempotency + concurrency tests                                          |
+| `tests/unit/...`                 | Add unit tests for new functions                                             |
 
 ### Test Cases to Add
 
@@ -214,7 +243,7 @@ def test_idempotent_sync_no_duplicates(tmp_path):
     sync(...)
     # Second sync
     sync(...)
-    # Verify only one commit in public repo
+    # Verify only original commits exist in public repo (no duplicates)
 
 def test_idempotent_sync_new_commits(tmp_path):
     """Only new commits should be synced on subsequent runs."""
@@ -224,6 +253,24 @@ def test_idempotent_sync_new_commits(tmp_path):
 
 def test_first_run_no_marker(tmp_path):
     """First run should work when no marker exists."""
+    # Sync with no previous marker
+    # Verify all commits synced with markers
+
+def test_marker_in_commit_message(tmp_path):
+    """Verify marker is appended to commit messages."""
+    # Sync commits
+    # Check public commits contain [synced: <sha>]
+
+def test_concurrent_sync_blocked(tmp_path):
+    """Second sync should be blocked while first is running."""
+    # Start first sync
+    # Try second sync
+    # Verify second is blocked/aborted
+
+def test_failed_sync_no_marker_update(tmp_path):
+    """Failed sync should not update markers."""
+    # Run sync that fails partway
+    # Verify no markers updated
 ```
 
 ---
@@ -231,14 +278,16 @@ def test_first_run_no_marker(tmp_path):
 ## Questions for Clarification
 
 1. **What is the expected behavior when new commits are added to the private branch?** Should only new commits be synced, or all commits each time?
+   - ✅ **Answer: Only new commits** (incremental sync)
 
 2. **Where should the "last synced commit" state be stored?**
-   - In the public repository (dedicated branch/ref)?
-   - In the private repository?
-   - External (file, env var)?
+   - ✅ **Answer: Embed in commit messages** - append marker string `[synced: <sha>]` to each commit message
 
 3. **Should the sync be re-runnable after a failure?** (i.e., handle partial syncs gracefully)
+   - ✅ **Answer: Don't update markers on failure** - re-run from last successful sync point
 
 4. **Are there concurrent access concerns?** (multiple sync jobs running simultaneously)
+   - ✅ **Answer: Lock via sync branch** - check if sync branch exists before starting, abort if in-progress
 
 5. **Should `--force` be deprecated or work differently with idempotency?**
+   - ✅ **Answer: Keep as-is** - existing behavior preserved
