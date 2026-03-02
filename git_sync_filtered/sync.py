@@ -108,6 +108,10 @@ def sync(
     if not paths_to_keep:
         raise ValueError("At least one --keep path or --keep-from-file required")
 
+    if os.environ.get("GH_TOKEN"):
+        # Configure git to use the token
+        private = private.replace("https://", f"https://{os.environ['GH_TOKEN']}@")
+
     with TemporaryDirectory(prefix="git-sync-") as work_dir:
         work_dir_path = Path(work_dir)
         private_clone = work_dir_path / "private"
