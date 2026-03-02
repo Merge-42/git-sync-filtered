@@ -118,19 +118,32 @@ def _rewrite_commits_with_markers(
     Processes oldest-to-newest so each amend applies cleanly in sequence.
     """
     commits = list(repo.iter_commits(branch))
+    import sys
+
+    print(
+        f"DEBUG: Processing {len(commits)} commits on branch {branch}", file=sys.stderr
+    )
 
     for commit in reversed(commits):
         message = _decode_message(commit.message)
+        print(f"DEBUG: Commit {commit.hexsha[:8]}: {repr(message)}", file=sys.stderr)
 
         if parse_marker(message, marker_prefix):
+            print("DEBUG:   Skipping - marker exists", file=sys.stderr)
             continue
 
         new_message = append_marker_to_commit(message, commit.hexsha, marker_prefix)
+        print(f"DEBUG:   New message: {repr(new_message)}", file=sys.stderr)
 
         try:
             repo.git.commit(message=new_message, amend=True)
-        except git.GitCommandError:
-            pass
+            print("DEBUG:   Amend succeeded", file=sys.stderr)
+        except git.GitCommandError as e:
+            print(
+                f"DEBUG: Failed to amend commit {commit.hexsha[:8]}: {e}",
+                file=sys.stderr,
+            )
+            raise
 
 
 def sync(
