@@ -227,12 +227,14 @@ sequenceDiagram
 
 ### File Changes Required
 
-| File                             | Changes                                                                      |
-| -------------------------------- | ---------------------------------------------------------------------------- |
-| `cli.py`                         | Add `--marker-prefix`, `--reset` options                                     |
-| `sync.py`                        | Add commit message parsing, marker appending, incremental filtering, locking |
-| `tests/integration/test_sync.py` | Add idempotency + concurrency tests                                          |
-| `tests/unit/...`                 | Add unit tests for new functions                                             |
+| File                             | Status   | Changes                                                                                      |
+| -------------------------------- | -------- | -------------------------------------------------------------------------------------------- |
+| `verify.py`                      | ✅ Done  | Hash verification (`get_file_hashes`, `verify_sync_integrity`)                               |
+| `marker.py`                      | ✅ Done  | Marker parsing/appending (`parse_marker`, `append_marker_to_commit`, `find_last_synced_sha`) |
+| `lock.py`                        | ✅ Done  | Locking mechanism (`check_sync_lock`, `acquire_sync_lock`, `release_sync_lock`)              |
+| `cli.py`                         | ✅ Done  | Add `--marker-prefix`, `--reset` options                                                     |
+| `sync.py`                        | ⏳ To Do | Wire in idempotency logic                                                                    |
+| `tests/integration/test_sync.py` | ⏳ To Do | Add idempotency + concurrency tests                                                          |
 
 ### Test Cases to Add
 

@@ -20,6 +20,8 @@ class SyncConfig(BaseModel):
     dry_run: bool = False
     merge: bool = False
     force: bool = False
+    marker_prefix: str = "synced"
+    reset: bool = False
 
     @field_validator("keep", mode="before")
     @classmethod
@@ -64,6 +66,16 @@ class SyncConfig(BaseModel):
 )
 @click.option("--merge", is_flag=True, help="Merge into main branch after sync")
 @click.option("--force", is_flag=True, help="Force push")
+@click.option(
+    "--marker-prefix",
+    default="synced",
+    help="Prefix for sync marker in commit messages",
+)
+@click.option(
+    "--reset",
+    is_flag=True,
+    help="Reset sync state and re-sync all commits from beginning",
+)
 def main(
     private: str,
     public: str,
@@ -75,6 +87,8 @@ def main(
     dry_run: bool,
     merge: bool,
     force: bool,
+    marker_prefix: str,
+    reset: bool,
 ) -> None:
     """Sync filtered commits from private to public repository."""
 
@@ -90,6 +104,8 @@ def main(
             dry_run=dry_run,
             merge=merge,
             force=force,
+            marker_prefix=marker_prefix,
+            reset=reset,
         )
         result = sync(
             private=config.private,
@@ -102,6 +118,8 @@ def main(
             dry_run=config.dry_run,
             merge=config.merge,
             force=config.force,
+            marker_prefix=config.marker_prefix,
+            reset=config.reset,
         )
     except ValueError as e:
         raise click.ClickException(str(e))

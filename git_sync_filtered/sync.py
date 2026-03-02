@@ -102,6 +102,8 @@ def sync(
     dry_run: bool,
     merge: bool,
     force: bool,
+    marker_prefix: str = "synced",
+    reset: bool = False,
 ) -> SyncResult:
     paths_to_keep = collect_paths_to_keep(keep, keep_from_file)
 
