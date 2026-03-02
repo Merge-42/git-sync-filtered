@@ -119,6 +119,17 @@ def _rewrite_commits_with_markers(
     """
     commits = list(repo.iter_commits(branch))
 
+    if not commits:
+        return
+
+    first_commit = commits[0]
+    committer_name = first_commit.committer.name
+    committer_email = first_commit.committer.email
+
+    with repo.config_writer() as config:
+        config.set_value("user", "email", committer_email)
+        config.set_value("user", "name", committer_name)
+
     for commit in reversed(commits):
         message = _decode_message(commit.message)
 
@@ -179,10 +190,6 @@ def sync(
         private_clone = work_dir_path / "private"
         private_repo = git.Repo.clone_from(private, str(private_clone))
 
-        with private_repo.config_writer() as config:
-            config.set_value("user", "email", "git-sync-filtered@local")
-            config.set_value("user", "name", "git-sync-filtered")
-
         if last_synced_sha:
             # Graft: treat last_synced_sha as a root so filter-repo only
             # rewrites commits after it
@@ -205,10 +212,6 @@ def sync(
                 pass
 
         private_repo = git.Repo(private_clone)
-
-        with private_repo.config_writer() as config:
-            config.set_value("user", "email", "git-sync-filtered@local")
-            config.set_value("user", "name", "git-sync-filtered")
 
         if not dry_run:
             if "public" not in private_repo.remotes:
