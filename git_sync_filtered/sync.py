@@ -7,6 +7,13 @@ from typing import Optional, TypedDict
 import git
 from git_filter_repo import FilteringOptions, RepoFilter
 
+from git_sync_filtered.lock import check_sync_lock
+from git_sync_filtered.marker import (
+    append_marker_to_commit,
+    find_last_synced_sha,
+    parse_marker,
+)
+
 
 class SyncResult(TypedDict):
     paths_to_keep: list[str]
@@ -31,6 +38,7 @@ def collect_paths_to_keep(
 
 
 def run_filter_repo(repo_path: Path | str, paths_to_keep: list[str]) -> None:
+    """Run git-filter-repo to filter repository to only keep specified paths."""
     old_cwd = os.getcwd()
     os.chdir(repo_path)
 
@@ -59,24 +67,17 @@ def push_to_remote(
     else:
         repo.remote("public").set_url(public_url)
 
-    repo.remote("public").fetch()
-
     if dry_run:
-        commits = []
-        for commit in repo.iter_commits(private_branch):
-            commits.append(f"  {commit.hexsha[:8]} {commit.summary}")
-        return commits
-    else:
-        refspec = f"refs/heads/{private_branch}:refs/heads/{sync_branch}"
-        repo.remote("public").push(refspec=refspec, force=force)
-        return []
+        return [
+            f"  {c.hexsha[:8]} {c.summary}" for c in repo.iter_commits(private_branch)
+        ]
+
+    refspec = f"refs/heads/{private_branch}:refs/heads/{sync_branch}"
+    repo.remote("public").push(refspec=refspec, force=force)
+    return []
 
 
-def merge_into_main(
-    repo: git.Repo,
-    main_branch: str,
-    sync_branch: str,
-) -> bool:
+def merge_into_main(repo: git.Repo, main_branch: str, sync_branch: str) -> bool:
     repo.heads[main_branch].checkout()
 
     try:
@@ -91,6 +92,55 @@ def merge_into_main(
         return False
 
 
+def _get_last_synced_sha_from_remote(
+    repo: git.Repo, sync_branch: str, marker_prefix: str
+) -> str | None:
+    """Get the last synced private SHA from the public repo's sync branch commit markers."""
+    try:
+        messages = [
+            c.message.decode("utf-8") if isinstance(c.message, bytes) else c.message
+            for c in repo.iter_commits(f"public/{sync_branch}")
+        ]
+        return find_last_synced_sha(messages, marker_prefix)
+    except Exception:
+        return None
+
+
+def _rewrite_commits_with_markers(
+    repo: git.Repo, branch: str, marker_prefix: str
+) -> None:
+    """Rewrite commit messages to include sync markers for commits not yet marked.
+
+    Processes oldest-to-newest so each amend applies cleanly in sequence.
+    """
+    commits = list(repo.iter_commits(branch))
+
+    if not commits:
+        return
+
+    first_commit = commits[0]
+    with repo.config_writer() as config:
+        config.set_value("user", "name", first_commit.committer.name)
+        config.set_value("user", "email", first_commit.committer.email)
+
+    for commit in reversed(commits):
+        message = (
+            commit.message.decode("utf-8")
+            if isinstance(commit.message, bytes)
+            else commit.message
+        )
+
+        if parse_marker(message, marker_prefix):
+            continue
+
+        new_message = append_marker_to_commit(message, commit.hexsha, marker_prefix)
+
+        try:
+            repo.git.commit(message=new_message, amend=True)
+        except git.GitCommandError:
+            pass
+
+
 def sync(
     private: str,
     public: str,
@@ -102,6 +152,8 @@ def sync(
     dry_run: bool,
     merge: bool,
     force: bool,
+    marker_prefix: str = "synced",
+    reset: bool = False,
 ) -> SyncResult:
     paths_to_keep = collect_paths_to_keep(keep, keep_from_file)
 
@@ -110,25 +162,68 @@ def sync(
 
     with TemporaryDirectory(prefix="git-sync-") as work_dir:
         work_dir_path = Path(work_dir)
+
+        # Step 1: Fetch public state to determine what was last synced
+        last_synced_sha: str | None = None
+        if not dry_run and not reset:
+            probe_path = work_dir_path / "probe"
+            probe_repo = git.Repo.clone_from(private, str(probe_path))
+            probe_repo.create_remote("public", public)
+            try:
+                probe_repo.remote("public").fetch()
+                last_synced_sha = _get_last_synced_sha_from_remote(
+                    probe_repo, sync_branch, marker_prefix
+                )
+            except Exception:  # noqa: BLE001
+                last_synced_sha = None
+
+            lock_branch = f"{sync_branch}-in-progress"
+            if check_sync_lock(probe_repo, "public", lock_branch):
+                raise ValueError(
+                    f"Sync already in progress: {lock_branch} branch exists"
+                )
+
+        # Step 2: Clone the private repo; apply graft for incremental sync
         private_clone = work_dir_path / "private"
         private_repo = git.Repo.clone_from(private, str(private_clone))
 
+        if last_synced_sha:
+            # Graft: treat last_synced_sha as a root so filter-repo only
+            # rewrites commits after it
+            try:
+                private_repo.commit(last_synced_sha)
+                grafts_file = private_clone / ".git" / "info" / "grafts"
+                grafts_file.parent.mkdir(parents=True, exist_ok=True)
+                grafts_file.write_text(f"{last_synced_sha}\n")
+            except Exception:  # noqa: BLE001
+                last_synced_sha = None  # SHA gone; fall back to full sync
+
+        # Step 3: Filter the (possibly grafted) history
         run_filter_repo(str(private_clone), paths_to_keep)
 
+        # Re-open Repo after filter-repo rewrites history
+        private_repo.close()
+        private_repo = git.Repo(private_clone)
+
+        # Step 4: Rewrite commit messages with sync markers
+        _rewrite_commits_with_markers(private_repo, private_branch, marker_prefix)
+
+        # Step 5: Push — force when incremental since SHAs are rewritten by filter-repo
         dry_run_commits = push_to_remote(
-            private_repo, public, sync_branch, private_branch, force, dry_run
+            private_repo,
+            public,
+            sync_branch,
+            private_branch,
+            force=force or bool(last_synced_sha),
+            dry_run=dry_run,
         )
 
+        merge_success: bool | None = None
         if merge and not dry_run:
-            success = merge_into_main(private_repo, main_branch, sync_branch)
-            return {
-                "paths_to_keep": paths_to_keep,
-                "dry_run_commits": dry_run_commits,
-                "merge_success": success,
-            }
+            merge_success = merge_into_main(private_repo, main_branch, sync_branch)
 
         return {
             "paths_to_keep": paths_to_keep,
             "dry_run_commits": dry_run_commits,
-            "merge_success": None,
+            "merge_success": merge_success,
         }
