@@ -29,7 +29,7 @@ def test_push_to_remote_creates_remote_when_not_exists(mock_repo: Repo) -> None:
     mock_repo.create_remote.assert_called_once_with(
         "public", "https://github.com/user/public.git"
     )
-    mock_repo.remote("public").fetch.assert_called_once()
+    mock_repo.remote("public").fetch.assert_not_called()
     mock_repo.remote("public").push.assert_called_once()
 
 

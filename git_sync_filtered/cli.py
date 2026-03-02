@@ -1,52 +1,15 @@
-from fnmatch import translate as glob_translate
 from pathlib import Path
 
 import click
-from pydantic import BaseModel, ConfigDict, FilePath, field_validator
 
 from git_sync_filtered.sync import sync
 
 
-class SyncConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    private: str
-    public: str
-    keep: tuple[str, ...]
-    keep_from_file: FilePath | None = None
-    sync_branch: str = "upstream/sync"
-    main_branch: str = "main"
-    private_branch: str = "main"
-    dry_run: bool = False
-    merge: bool = False
-    force: bool = False
-    marker_prefix: str = "synced"
-    reset: bool = False
-
-    @field_validator("keep", mode="before")
-    @classmethod
-    def ensure_non_empty(cls, v: tuple[str, ...]) -> tuple[str, ...]:
-        if not v:
-            raise ValueError("At least one --keep path required")
-        return v
-
-    @field_validator("keep", mode="after")
-    @classmethod
-    def validate_glob_paths(cls, v: tuple[str, ...]) -> tuple[str, ...]:
-        for path in v:
-            if not path:
-                raise ValueError("Keep path cannot be empty")
-            glob_translate(path)
-        return v
-
-    @field_validator("sync_branch", "main_branch", "private_branch", mode="after")
-    @classmethod
-    def validate_branch_name(cls, v: str) -> str:
-        if not v:
-            raise ValueError("Branch name cannot be empty")
-        if v.startswith("/") or ".." in v:
-            raise ValueError(f"Invalid branch name: {v!r}")
-        return v
+def _validate_branch(name: str) -> None:
+    if not name:
+        raise ValueError("Branch name cannot be empty")
+    if name.startswith("/") or ".." in name:
+        raise ValueError(f"Invalid branch name: {name!r}")
 
 
 @click.command()
@@ -93,7 +56,10 @@ def main(
     """Sync filtered commits from private to public repository."""
 
     try:
-        config = SyncConfig(
+        for branch in (sync_branch, main_branch, private_branch):
+            _validate_branch(branch)
+
+        result = sync(
             private=private,
             public=public,
             keep=keep,
@@ -106,20 +72,6 @@ def main(
             force=force,
             marker_prefix=marker_prefix,
             reset=reset,
-        )
-        result = sync(
-            private=config.private,
-            public=config.public,
-            keep=config.keep,
-            keep_from_file=config.keep_from_file,
-            sync_branch=config.sync_branch,
-            main_branch=config.main_branch,
-            private_branch=config.private_branch,
-            dry_run=config.dry_run,
-            merge=config.merge,
-            force=config.force,
-            marker_prefix=config.marker_prefix,
-            reset=config.reset,
         )
     except ValueError as e:
         raise click.ClickException(str(e))

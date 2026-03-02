@@ -2,6 +2,8 @@ import os
 import subprocess
 from pathlib import Path
 
+from git_sync_filtered.sync import sync
+
 
 def run_git(cwd: Path, *args: str, env: dict[str, str] | None = None) -> None:
     subprocess.run(["git", *args], cwd=cwd, check=True, env=env)
@@ -31,8 +33,6 @@ def test_marker_in_commit_message(tmp_path: Path) -> None:
     public_repo.mkdir()
     run_git(public_repo, "init", "--bare", env=env)
 
-    from git_sync_filtered.sync import sync
-
     sync(
         private=str(private_repo),
         public=str(public_repo),
@@ -44,16 +44,10 @@ def test_marker_in_commit_message(tmp_path: Path) -> None:
         dry_run=False,
         merge=False,
         force=False,
-        marker_prefix="synced",
-        reset=False,
     )
 
     cloned = tmp_path / "check_public"
-    subprocess.run(
-        ["git", "clone", str(public_repo), str(cloned)],
-        check=True,
-        env=env,
-    )
+    subprocess.run(["git", "clone", str(public_repo), str(cloned)], check=True, env=env)
     run_git(cloned, "checkout", "upstream/sync", env=env)
 
     result = subprocess.run(
@@ -63,9 +57,7 @@ def test_marker_in_commit_message(tmp_path: Path) -> None:
         text=True,
         env=env,
     )
-    commit_message = result.stdout.strip()
-
-    assert "[synced:" in commit_message, f"Marker not found in commit: {commit_message}"
+    assert "[synced:" in result.stdout, f"Marker not found in commit: {result.stdout}"
 
 
 def test_idempotent_sync_no_duplicates(tmp_path: Path) -> None:
@@ -92,44 +84,22 @@ def test_idempotent_sync_no_duplicates(tmp_path: Path) -> None:
     public_repo.mkdir()
     run_git(public_repo, "init", "--bare", env=env)
 
-    from git_sync_filtered.sync import sync
-
-    sync(
-        private=str(private_repo),
-        public=str(public_repo),
-        keep=("src",),
-        keep_from_file=None,
-        sync_branch="upstream/sync",
-        main_branch="main",
-        private_branch="main",
-        dry_run=False,
-        merge=False,
-        force=False,
-        marker_prefix="synced",
-        reset=False,
-    )
-
-    sync(
-        private=str(private_repo),
-        public=str(public_repo),
-        keep=("src",),
-        keep_from_file=None,
-        sync_branch="upstream/sync",
-        main_branch="main",
-        private_branch="main",
-        dry_run=False,
-        merge=False,
-        force=False,
-        marker_prefix="synced",
-        reset=False,
-    )
+    for _ in range(2):
+        sync(
+            private=str(private_repo),
+            public=str(public_repo),
+            keep=("src",),
+            keep_from_file=None,
+            sync_branch="upstream/sync",
+            main_branch="main",
+            private_branch="main",
+            dry_run=False,
+            merge=False,
+            force=False,
+        )
 
     cloned = tmp_path / "check_public"
-    subprocess.run(
-        ["git", "clone", str(public_repo), str(cloned)],
-        check=True,
-        env=env,
-    )
+    subprocess.run(["git", "clone", str(public_repo), str(cloned)], check=True, env=env)
     run_git(cloned, "checkout", "upstream/sync", env=env)
 
     result = subprocess.run(
@@ -139,9 +109,9 @@ def test_idempotent_sync_no_duplicates(tmp_path: Path) -> None:
         text=True,
         env=env,
     )
-    commit_count = int(result.stdout.strip())
-
-    assert commit_count == 1, f"Expected 1 commit, got {commit_count}"
+    assert (
+        int(result.stdout.strip()) == 1
+    ), f"Expected 1 commit, got {result.stdout.strip()}"
 
 
 def test_idempotent_sync_new_commits_only(tmp_path: Path) -> None:
@@ -168,8 +138,6 @@ def test_idempotent_sync_new_commits_only(tmp_path: Path) -> None:
     public_repo.mkdir()
     run_git(public_repo, "init", "--bare", env=env)
 
-    from git_sync_filtered.sync import sync
-
     sync(
         private=str(private_repo),
         public=str(public_repo),
@@ -181,8 +149,6 @@ def test_idempotent_sync_new_commits_only(tmp_path: Path) -> None:
         dry_run=False,
         merge=False,
         force=False,
-        marker_prefix="synced",
-        reset=False,
     )
 
     (private_repo / "src" / "new.py").write_text("print('new')")
@@ -200,16 +166,10 @@ def test_idempotent_sync_new_commits_only(tmp_path: Path) -> None:
         dry_run=False,
         merge=False,
         force=False,
-        marker_prefix="synced",
-        reset=False,
     )
 
     cloned = tmp_path / "check_public"
-    subprocess.run(
-        ["git", "clone", str(public_repo), str(cloned)],
-        check=True,
-        env=env,
-    )
+    subprocess.run(["git", "clone", str(public_repo), str(cloned)], check=True, env=env)
     run_git(cloned, "checkout", "upstream/sync", env=env)
 
     result = subprocess.run(
@@ -219,13 +179,13 @@ def test_idempotent_sync_new_commits_only(tmp_path: Path) -> None:
         text=True,
         env=env,
     )
-    commit_count = int(result.stdout.strip())
-
-    assert commit_count == 2, f"Expected 2 commits (initial + new), got {commit_count}"
+    assert (
+        int(result.stdout.strip()) == 2
+    ), f"Expected 2 commits, got {result.stdout.strip()}"
 
 
 def test_reset_sync_restarts_from_beginning(tmp_path: Path) -> None:
-    """With reset flag, sync should re-sync all commits from beginning."""
+    """With reset flag, sync should re-sync all commits and rewrite history."""
     env = {
         **os.environ,
         "GIT_AUTHOR_NAME": "Test",
@@ -248,8 +208,6 @@ def test_reset_sync_restarts_from_beginning(tmp_path: Path) -> None:
     public_repo.mkdir()
     run_git(public_repo, "init", "--bare", env=env)
 
-    from git_sync_filtered.sync import sync
-
     sync(
         private=str(private_repo),
         public=str(public_repo),
@@ -261,8 +219,6 @@ def test_reset_sync_restarts_from_beginning(tmp_path: Path) -> None:
         dry_run=False,
         merge=False,
         force=False,
-        marker_prefix="synced",
-        reset=False,
     )
 
     sync(
@@ -276,25 +232,25 @@ def test_reset_sync_restarts_from_beginning(tmp_path: Path) -> None:
         dry_run=False,
         merge=False,
         force=False,
-        marker_prefix="synced",
         reset=True,
     )
 
-    cloned = tmp_path / "check_public"
-    subprocess.run(
-        ["git", "clone", str(public_repo), str(cloned)],
-        check=True,
-        env=env,
-    )
-    run_git(cloned, "checkout", "upstream/sync", env=env)
-
     result = subprocess.run(
-        ["git", "rev-list", "--count", "HEAD"],
-        cwd=cloned,
+        ["git", "rev-list", "--count", "upstream/sync"],
+        cwd=public_repo,
         capture_output=True,
         text=True,
         env=env,
     )
-    commit_count = int(result.stdout.strip())
+    assert (
+        int(result.stdout.strip()) == 1
+    ), f"Expected 1 commit after reset, got {result.stdout.strip()}"
 
-    assert commit_count == 1, f"Expected 1 commit after reset, got {commit_count}"
+    log = subprocess.run(
+        ["git", "log", "--format=%B", "-1", "upstream/sync"],
+        cwd=public_repo,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert "[synced:" in log.stdout, "Marker should be present after reset sync"

@@ -8,14 +8,17 @@ import git
 from git_filter_repo import FilteringOptions, RepoFilter
 
 from git_sync_filtered.lock import check_sync_lock
-from git_sync_filtered.marker import find_last_synced_sha, parse_marker
+from git_sync_filtered.marker import (
+    append_marker_to_commit,
+    find_last_synced_sha,
+    parse_marker,
+)
 
 
 class SyncResult(TypedDict):
     paths_to_keep: list[str]
     dry_run_commits: list[str]
     merge_success: bool | None
-    last_synced_sha: str | None
 
 
 def read_paths_from_file(path: Path) -> list[str]:
@@ -64,17 +67,14 @@ def push_to_remote(
     else:
         repo.remote("public").set_url(public_url)
 
-    repo.remote("public").fetch()
-
     if dry_run:
-        commits = []
-        for commit in repo.iter_commits(private_branch):
-            commits.append(f"  {commit.hexsha[:8]} {commit.summary}")
-        return commits
-    else:
-        refspec = f"refs/heads/{private_branch}:refs/heads/{sync_branch}"
-        repo.remote("public").push(refspec=refspec, force=force)
-        return []
+        return [
+            f"  {c.hexsha[:8]} {c.summary}" for c in repo.iter_commits(private_branch)
+        ]
+
+    refspec = f"refs/heads/{private_branch}:refs/heads/{sync_branch}"
+    repo.remote("public").push(refspec=refspec, force=force)
+    return []
 
 
 def merge_into_main(repo: git.Repo, main_branch: str, sync_branch: str) -> bool:
@@ -92,87 +92,45 @@ def merge_into_main(repo: git.Repo, main_branch: str, sync_branch: str) -> bool:
         return False
 
 
+def _decode_message(msg: str | bytes) -> str:
+    return msg.decode("utf-8") if isinstance(msg, bytes) else msg
+
+
 def _get_last_synced_sha_from_remote(
     repo: git.Repo, sync_branch: str, marker_prefix: str
 ) -> str | None:
     """Get the last synced private SHA from the public repo's sync branch commit markers."""
     try:
-        commits = list(repo.iter_commits(f"public/{sync_branch}"))
-        messages = []
-        for commit in commits:
-            msg = commit.message
-            if isinstance(msg, bytes):
-                msg = msg.decode("utf-8")
-            messages.append(msg)
+        messages = [
+            _decode_message(c.message)
+            for c in repo.iter_commits(f"public/{sync_branch}")
+        ]
         return find_last_synced_sha(messages, marker_prefix)
     except Exception:
         return None
 
 
 def _rewrite_commits_with_markers(
-    repo: git.Repo, branch: str, marker_prefix: str, since_sha: str | None = None
+    repo: git.Repo, branch: str, marker_prefix: str
 ) -> None:
     """Rewrite commit messages to include sync markers for commits not yet marked.
 
-    If since_sha is provided, only rewrite commits after that SHA.
+    Processes oldest-to-newest so each amend applies cleanly in sequence.
     """
-    if since_sha:
-        try:
-            commits = list(repo.iter_commits(f"{since_sha}..{branch}"))
-        except git.GitCommandError:
-            commits = list(repo.iter_commits(branch))
-    else:
-        commits = list(repo.iter_commits(branch))
+    commits = list(repo.iter_commits(branch))
 
-    # Process oldest-to-newest so each amend applies cleanly
     for commit in reversed(commits):
-        message = commit.message
-        if isinstance(message, bytes):
-            message = message.decode("utf-8")
+        message = _decode_message(commit.message)
 
         if parse_marker(message, marker_prefix):
             continue
 
-        sha = commit.hexsha
-        new_message = f"{message.rstrip()}\n\n[{marker_prefix}: {sha}]"
+        new_message = append_marker_to_commit(message, commit.hexsha, marker_prefix)
 
         try:
             repo.git.commit(message=new_message, amend=True)
         except git.GitCommandError:
             pass
-
-
-def _clone_commits_since(
-    private_url: str,
-    work_dir: Path,
-    private_branch: str,
-    since_sha: str | None,
-    paths_to_keep: list[str],
-) -> git.Repo:
-    """Clone the private repo, optionally truncating history at since_sha.
-
-    If since_sha is provided, create a shallow/partial clone containing only
-    commits after that SHA, grafted onto an empty parent so it can be pushed
-    on top of the existing public branch.
-    """
-    clone_path = work_dir / "private"
-    repo = git.Repo.clone_from(private_url, str(clone_path))
-
-    if since_sha:
-        # Verify the SHA exists in the cloned repo
-        try:
-            repo.commit(since_sha)
-        except Exception:
-            # SHA not found — fall back to full sync
-            return repo
-
-        # Create a graft: make since_sha a root commit so filter-repo
-        # only rewrites the range since_sha..HEAD
-        grafts_file = Path(str(clone_path)) / ".git" / "info" / "grafts"
-        grafts_file.parent.mkdir(parents=True, exist_ok=True)
-        grafts_file.write_text(f"{since_sha}\n")
-
-    return repo
 
 
 def sync(
@@ -217,7 +175,7 @@ def sync(
                     f"Sync already in progress: {lock_branch} branch exists"
                 )
 
-        # Step 2: Clone the private repo, apply graft if incremental
+        # Step 2: Clone the private repo; apply graft for incremental sync
         private_clone = work_dir_path / "private"
         private_repo = git.Repo.clone_from(private, str(private_clone))
 
@@ -235,35 +193,26 @@ def sync(
         # Step 3: Filter the (possibly grafted) history
         run_filter_repo(str(private_clone), paths_to_keep)
 
+        # Re-create Repo object after filter-repo rewrites history
+        private_repo = git.Repo(private_clone)
+
         if not dry_run:
             if "public" not in private_repo.remotes:
                 private_repo.create_remote("public", public)
             else:
                 private_repo.remote("public").set_url(public)
 
-        # Step 4: Rewrite commit messages with sync markers on new commits
+        # Step 4: Rewrite commit messages with sync markers
         _rewrite_commits_with_markers(private_repo, private_branch, marker_prefix)
 
-        # Step 5: Push
-        if last_synced_sha:
-            # Incremental push: graft means our local history starts from a
-            # rewritten root; we need to push on top of the existing public branch.
-            # Use --force-with-lease equivalent: always force since SHAs changed.
-            dry_run_commits = push_to_remote(
-                private_repo,
-                public,
-                sync_branch,
-                private_branch,
-                force=True,
-                dry_run=dry_run,
-            )
-        else:
-            dry_run_commits = push_to_remote(
-                private_repo, public, sync_branch, private_branch, force, dry_run
-            )
-
-        final_synced_sha = _get_last_synced_sha_from_remote(
-            private_repo, sync_branch, marker_prefix
+        # Step 5: Push — force when incremental since SHAs are rewritten by filter-repo
+        dry_run_commits = push_to_remote(
+            private_repo,
+            public,
+            sync_branch,
+            private_branch,
+            force=True if last_synced_sha else force,
+            dry_run=dry_run,
         )
 
         if merge and not dry_run:
@@ -272,12 +221,10 @@ def sync(
                 "paths_to_keep": paths_to_keep,
                 "dry_run_commits": dry_run_commits,
                 "merge_success": success,
-                "last_synced_sha": final_synced_sha,
             }
 
         return {
             "paths_to_keep": paths_to_keep,
             "dry_run_commits": dry_run_commits,
             "merge_success": None,
-            "last_synced_sha": final_synced_sha,
         }
