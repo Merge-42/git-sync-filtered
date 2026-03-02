@@ -1,4 +1,5 @@
 import os
+import re
 from itertools import filterfalse
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -46,6 +47,73 @@ def run_filter_repo(repo_path: Path | str, paths_to_keep: list[str]) -> None:
         os.chdir(old_cwd)
 
 
+def get_file_hashes(repo: git.Repo, paths: list[str]) -> dict[str, str]:
+    """Get SHA-1 object hashes for files using git ls-tree."""
+    hashes: dict[str, str] = {}
+    for path in paths:
+        result = repo.git.ls_tree("-r", "HEAD", "--", path)
+        if not result:
+            continue
+        for line in result.splitlines():
+            parts = line.split()
+            if len(parts) >= 4:
+                obj_hash = parts[2]
+                file_path = parts[3]
+                hashes[file_path] = obj_hash
+    return hashes
+
+
+def verify_sync_integrity(
+    private_repo: git.Repo,
+    public_repo: git.Repo,
+    paths_to_keep: list[str],
+) -> bool:
+    """
+    Verify that synced files in public repo match filtered files from private repo.
+
+    Compares file object hashes between private (filtered) and public repos.
+    Returns True if hashes match, False otherwise.
+    """
+    if not paths_to_keep:
+        return True
+
+    private_hashes = get_file_hashes(private_repo, paths_to_keep)
+    public_hashes = get_file_hashes(public_repo, paths_to_keep)
+
+    return private_hashes == public_hashes
+
+
+def parse_marker(message: str, prefix: str) -> str | None:
+    """Extract SHA from commit message marker. Returns None if no marker found."""
+    import re
+
+    pattern = rf"\[{prefix}:\s*([^\]]+)\]"
+    match = re.search(pattern, message)
+    if match:
+        return match.group(1)
+    return None
+
+
+def append_marker_to_commit(message: str, sha: str, prefix: str) -> str:
+    """Append or update marker in commit message."""
+    marker = f"[{prefix}: {sha}]"
+    pattern = rf"\[{prefix}:\s*[^\]]+\]"
+
+    new_message = re.sub(pattern, "", message)
+    new_message = new_message.rstrip()
+
+    return f"{new_message}\n\n{marker}"
+
+
+def find_last_synced_sha(commit_messages: list[str], prefix: str) -> str | None:
+    """Find the SHA from the most recent commit with a sync marker."""
+    for message in commit_messages:
+        sha = parse_marker(message, prefix)
+        if sha:
+            return sha
+    return None
+
+
 def push_to_remote(
     repo: git.Repo,
     public_url: str,
@@ -89,6 +157,27 @@ def merge_into_main(
         return True
     except git.GitCommandError:
         return False
+
+
+def check_sync_lock(repo: git.Repo, remote_name: str, sync_branch: str) -> bool:
+    """Check if sync is already in progress by checking if sync branch exists."""
+    try:
+        refs = repo.remote(remote_name).refs
+        return sync_branch in [ref.name for ref in refs]
+    except Exception:
+        return False
+
+
+def acquire_sync_lock(
+    repo: git.Repo, remote_name: str, sync_branch: str, base_branch: str
+) -> None:
+    """Acquire lock by creating a sync branch from the base branch."""
+    repo.git.branch(sync_branch, base_branch)
+
+
+def release_sync_lock(repo: git.Repo, remote_name: str, sync_branch: str) -> None:
+    """Release lock by deleting the sync branch."""
+    repo.git.branch("-D", sync_branch)
 
 
 def sync(
