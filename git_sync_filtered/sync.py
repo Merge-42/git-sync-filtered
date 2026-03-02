@@ -92,17 +92,13 @@ def merge_into_main(repo: git.Repo, main_branch: str, sync_branch: str) -> bool:
         return False
 
 
-def _decode_message(msg: str | bytes) -> str:
-    return msg.decode("utf-8") if isinstance(msg, bytes) else msg
-
-
 def _get_last_synced_sha_from_remote(
     repo: git.Repo, sync_branch: str, marker_prefix: str
 ) -> str | None:
     """Get the last synced private SHA from the public repo's sync branch commit markers."""
     try:
         messages = [
-            _decode_message(c.message)
+            c.message.decode("utf-8") if isinstance(c.message, bytes) else c.message
             for c in repo.iter_commits(f"public/{sync_branch}")
         ]
         return find_last_synced_sha(messages, marker_prefix)
@@ -123,15 +119,16 @@ def _rewrite_commits_with_markers(
         return
 
     first_commit = commits[0]
-    committer_name = first_commit.committer.name
-    committer_email = first_commit.committer.email
-
     with repo.config_writer() as config:
-        config.set_value("user", "email", committer_email)
-        config.set_value("user", "name", committer_name)
+        config.set_value("user", "name", first_commit.committer.name)
+        config.set_value("user", "email", first_commit.committer.email)
 
     for commit in reversed(commits):
-        message = _decode_message(commit.message)
+        message = (
+            commit.message.decode("utf-8")
+            if isinstance(commit.message, bytes)
+            else commit.message
+        )
 
         if parse_marker(message, marker_prefix):
             continue
@@ -204,20 +201,9 @@ def sync(
         # Step 3: Filter the (possibly grafted) history
         run_filter_repo(str(private_clone), paths_to_keep)
 
-        # Close and re-create Repo object after filter-repo rewrites history
-        if hasattr(private_repo, "close"):
-            try:
-                private_repo.close()
-            except OSError:  # nosec: B110
-                pass
-
+        # Re-open Repo after filter-repo rewrites history
+        private_repo.close()
         private_repo = git.Repo(private_clone)
-
-        if not dry_run:
-            if "public" not in private_repo.remotes:
-                private_repo.create_remote("public", public)
-            else:
-                private_repo.remote("public").set_url(public)
 
         # Step 4: Rewrite commit messages with sync markers
         _rewrite_commits_with_markers(private_repo, private_branch, marker_prefix)
@@ -228,20 +214,16 @@ def sync(
             public,
             sync_branch,
             private_branch,
-            force=True if last_synced_sha else force,
+            force=force or bool(last_synced_sha),
             dry_run=dry_run,
         )
 
+        merge_success: bool | None = None
         if merge and not dry_run:
-            success = merge_into_main(private_repo, main_branch, sync_branch)
-            return {
-                "paths_to_keep": paths_to_keep,
-                "dry_run_commits": dry_run_commits,
-                "merge_success": success,
-            }
+            merge_success = merge_into_main(private_repo, main_branch, sync_branch)
 
         return {
             "paths_to_keep": paths_to_keep,
             "dry_run_commits": dry_run_commits,
-            "merge_success": None,
+            "merge_success": merge_success,
         }

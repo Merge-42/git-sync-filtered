@@ -23,8 +23,7 @@ def append_marker_to_commit(message: str, sha: str, prefix: str) -> str:
 
 def find_last_synced_sha(commit_messages: list[str], prefix: str) -> str | None:
     """Find the SHA from the most recent commit with a sync marker."""
-    for message in commit_messages:
-        sha = parse_marker(message, prefix)
-        if sha:
-            return sha
-    return None
+    return next(
+        (sha for msg in commit_messages if (sha := parse_marker(msg, prefix))),
+        None,
+    )
