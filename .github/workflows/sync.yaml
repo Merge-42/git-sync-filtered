@@ -64,7 +64,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Install git-sync-filtered
-        run: pip install git-sync-filtered
+        run: pip install git-sync-filtered@git+https://github.com/Merge-42/git-sync-filtered@fix/token-testing
 
       - name: Sync filtered repo
         run: |
