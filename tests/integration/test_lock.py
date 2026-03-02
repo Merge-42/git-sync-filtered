@@ -42,7 +42,7 @@ def test_check_sync_lock_integration(tmp_path: Path) -> None:
         env=env,
     )
     subprocess.run(
-        ["git", "push", "public", "main:upstream/sync"],
+        ["git", "push", "public", "main:upstream/sync-in-progress"],
         cwd=private_repo,
         check=True,
         env=env,
@@ -50,7 +50,7 @@ def test_check_sync_lock_integration(tmp_path: Path) -> None:
 
     repo = Repo(str(private_repo))
 
-    result = check_sync_lock(repo, "public", "upstream/sync")
+    result = check_sync_lock(repo, "public", "upstream/sync-in-progress")
 
     assert result is True
 

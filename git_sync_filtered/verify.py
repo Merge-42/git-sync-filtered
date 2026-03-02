@@ -1,11 +1,13 @@
 import git
 
 
-def get_file_hashes(repo: git.Repo, paths: list[str]) -> dict[str, str]:
+def get_file_hashes(
+    repo: git.Repo, paths: list[str], ref: str = "HEAD"
+) -> dict[str, str]:
     """Get SHA-1 object hashes for files using git ls-tree."""
     hashes: dict[str, str] = {}
     for path in paths:
-        result = repo.git.ls_tree("-r", "HEAD", "--", path)
+        result = repo.git.ls_tree("-r", ref, "--", path)
         if not result:
             continue
         for line in result.splitlines():
@@ -21,6 +23,8 @@ def verify_sync_integrity(
     private_repo: git.Repo,
     public_repo: git.Repo,
     paths_to_keep: list[str],
+    private_ref: str = "HEAD",
+    public_ref: str = "HEAD",
 ) -> bool:
     """
     Verify that synced files in public repo match filtered files from private repo.
@@ -31,7 +35,7 @@ def verify_sync_integrity(
     if not paths_to_keep:
         return True
 
-    private_hashes = get_file_hashes(private_repo, paths_to_keep)
-    public_hashes = get_file_hashes(public_repo, paths_to_keep)
+    private_hashes = get_file_hashes(private_repo, paths_to_keep, private_ref)
+    public_hashes = get_file_hashes(public_repo, paths_to_keep, public_ref)
 
     return private_hashes == public_hashes

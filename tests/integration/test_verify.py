@@ -54,7 +54,9 @@ def test_verify_sync_integrity_success(tmp_path: Path) -> None:
     private_git = git.Repo(str(private_repo))
     public_git = git.Repo(str(public_repo))
 
-    result = verify_sync_integrity(private_git, public_git, ["src"])
+    result = verify_sync_integrity(
+        private_git, public_git, ["src"], public_ref="upstream/sync"
+    )
 
     assert result is True
 
@@ -119,6 +121,8 @@ def test_verify_sync_integrity_failure(tmp_path: Path) -> None:
     private_git = git.Repo(str(private_repo))
     public_git = git.Repo(str(public_repo))
 
-    result = verify_sync_integrity(private_git, public_git, ["src"])
+    result = verify_sync_integrity(
+        private_git, public_git, ["src"], public_ref="upstream/sync"
+    )
 
     assert result is False

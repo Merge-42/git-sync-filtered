@@ -2,10 +2,17 @@ import git
 
 
 def check_sync_lock(repo: git.Repo, remote_name: str, sync_branch: str) -> bool:
-    """Check if sync is already in progress by checking if sync branch exists."""
+    """Check if sync is already in progress by checking if sync branch exists in remote."""
     try:
-        refs = repo.remote(remote_name).refs
-        return sync_branch in [ref.name for ref in refs]
+        remote = repo.remote(remote_name)
+        # Fetch to get an up-to-date view of remote refs
+        try:
+            remote.fetch()
+        except git.GitCommandError:
+            pass
+        refs = remote.refs
+        # ref.name is "remote/branch", ref.remote_head is just "branch"
+        return sync_branch in [ref.remote_head for ref in refs]
     except Exception:
         return False
 

@@ -20,7 +20,7 @@ def test_check_sync_lock_returns_false_when_branch_does_not_exist(
 def test_check_sync_lock_returns_true_when_branch_exists(mock_repo: MagicMock) -> None:
     """When sync branch exists, check returns True (lock held)."""
     mock_ref = MagicMock()
-    mock_ref.name = "upstream/sync"
+    mock_ref.remote_head = "upstream/sync"
     mock_repo.remote.return_value.refs = [mock_ref]
 
     result = check_sync_lock(mock_repo, "public", "upstream/sync")
