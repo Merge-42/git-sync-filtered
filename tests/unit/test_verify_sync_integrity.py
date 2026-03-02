@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 from git import Repo
 
-from git_sync_filtered.sync import get_file_hashes, verify_sync_integrity
+from git_sync_filtered.verify import get_file_hashes, verify_sync_integrity
 
 
 def test_verify_sync_integrity_returns_true_when_hashes_match(

@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 from git import Repo
 
-from git_sync_filtered.sync import acquire_sync_lock, check_sync_lock, release_sync_lock
+from git_sync_filtered.lock import acquire_sync_lock, check_sync_lock, release_sync_lock
 
 
 def test_check_sync_lock_returns_false_when_branch_does_not_exist(

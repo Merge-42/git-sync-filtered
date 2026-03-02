@@ -7,32 +7,6 @@ from typing import Optional, TypedDict
 import git
 from git_filter_repo import FilteringOptions, RepoFilter
 
-from git_sync_filtered.lock import acquire_sync_lock, check_sync_lock, release_sync_lock
-from git_sync_filtered.marker import (
-    append_marker_to_commit,
-    find_last_synced_sha,
-    parse_marker,
-)
-from git_sync_filtered.verify import get_file_hashes, verify_sync_integrity
-
-# Re-export for backwards compatibility
-__all__ = [
-    "sync",
-    "push_to_remote",
-    "merge_into_main",
-    "run_filter_repo",
-    "collect_paths_to_keep",
-    "read_paths_from_file",
-    "verify_sync_integrity",
-    "get_file_hashes",
-    "parse_marker",
-    "append_marker_to_commit",
-    "find_last_synced_sha",
-    "check_sync_lock",
-    "acquire_sync_lock",
-    "release_sync_lock",
-]
-
 
 class SyncResult(TypedDict):
     paths_to_keep: list[str]

@@ -1,4 +1,4 @@
-from git_sync_filtered.sync import (
+from git_sync_filtered.marker import (
     append_marker_to_commit,
     find_last_synced_sha,
     parse_marker,
