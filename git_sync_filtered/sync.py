@@ -19,9 +19,7 @@ def read_paths_from_file(path: Path) -> list[str]:
     return list(filterfalse(lambda line: line.startswith("#") or not line, lines))
 
 
-def collect_paths_to_keep(
-    keep: tuple[str, ...], keep_from_file: Optional[Path]
-) -> list[str]:
+def collect_paths_to_keep(keep: tuple[str, ...], keep_from_file: Optional[Path]) -> list[str]:
     paths_to_keep: set[str] = set(keep)
 
     if keep_from_file:
@@ -63,7 +61,7 @@ def push_to_remote(
 
     if dry_run:
         commits = []
-        for commit in repo.iter_commits(private_branch):
+        for commit in repo.iter_commits("HEAD"):
             commits.append(f"  {commit.hexsha[:8]} {commit.summary}")
         return commits
     else:
@@ -83,9 +81,7 @@ def merge_into_main(
         sync_head = repo.heads[sync_branch]
         repo.index.merge_commit(sync_head, msg=f"Merge branch '{sync_branch}'")
 
-        repo.remote("public").push(
-            refspec=f"refs/heads/{main_branch}:refs/heads/{main_branch}"
-        )
+        repo.remote("public").push(refspec=f"refs/heads/{main_branch}:refs/heads/{main_branch}")
         return True
     except git.GitCommandError:
         return False
