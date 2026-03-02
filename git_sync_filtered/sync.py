@@ -193,7 +193,13 @@ def sync(
         # Step 3: Filter the (possibly grafted) history
         run_filter_repo(str(private_clone), paths_to_keep)
 
-        # Re-create Repo object after filter-repo rewrites history
+        # Close and re-create Repo object after filter-repo rewrites history
+        if hasattr(private_repo, "close"):
+            try:
+                private_repo.close()
+            except OSError:  # nosec: B110
+                pass
+
         private_repo = git.Repo(private_clone)
 
         if not dry_run:
