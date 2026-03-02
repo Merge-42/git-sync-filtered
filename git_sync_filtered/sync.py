@@ -7,11 +7,15 @@ from typing import Optional, TypedDict
 import git
 from git_filter_repo import FilteringOptions, RepoFilter
 
+from git_sync_filtered.lock import check_sync_lock
+from git_sync_filtered.marker import find_last_synced_sha, parse_marker
+
 
 class SyncResult(TypedDict):
     paths_to_keep: list[str]
     dry_run_commits: list[str]
     merge_success: bool | None
+    last_synced_sha: str | None
 
 
 def read_paths_from_file(path: Path) -> list[str]:
@@ -72,11 +76,7 @@ def push_to_remote(
         return []
 
 
-def merge_into_main(
-    repo: git.Repo,
-    main_branch: str,
-    sync_branch: str,
-) -> bool:
+def merge_into_main(repo: git.Repo, main_branch: str, sync_branch: str) -> bool:
     repo.heads[main_branch].checkout()
 
     try:
@@ -89,6 +89,42 @@ def merge_into_main(
         return True
     except git.GitCommandError:
         return False
+
+
+def _get_last_synced_sha(repo: git.Repo, branch: str, marker_prefix: str) -> str | None:
+    """Get the last synced SHA from commit messages in the branch."""
+    try:
+        commits = list(repo.iter_commits(branch))
+        messages = []
+        for commit in commits:
+            msg = commit.message
+            if isinstance(msg, bytes):
+                msg = msg.decode("utf-8")
+            messages.append(msg)
+        return find_last_synced_sha(messages, marker_prefix)
+    except Exception:
+        return None
+
+
+def _rewrite_commits_with_markers(
+    repo: git.Repo, branch: str, marker_prefix: str
+) -> None:
+    """Rewrite commit messages to include sync markers."""
+    for commit in repo.iter_commits(branch):
+        message = commit.message
+        if isinstance(message, bytes):
+            message = message.decode("utf-8")
+
+        if parse_marker(message, marker_prefix):
+            continue
+
+        sha = commit.hexsha
+        new_message = f"{message.rstrip()}\n\n[{marker_prefix}: {sha}]"
+
+        try:
+            repo.git.commit(message=new_message, amend=True)
+        except git.GitCommandError:
+            pass
 
 
 def sync(
@@ -115,10 +151,31 @@ def sync(
         private_clone = work_dir_path / "private"
         private_repo = git.Repo.clone_from(private, str(private_clone))
 
+        if not dry_run:
+            if "public" not in private_repo.remotes:
+                private_repo.create_remote("public", public)
+            else:
+                private_repo.remote("public").set_url(public)
+            private_repo.remote("public").fetch()
+
+            if check_sync_lock(private_repo, "public", sync_branch):
+                raise ValueError(
+                    f"Sync already in progress: {sync_branch} branch exists"
+                )
+
+        if not reset:
+            _get_last_synced_sha(private_repo, private_branch, marker_prefix)
+
         run_filter_repo(str(private_clone), paths_to_keep)
+
+        _rewrite_commits_with_markers(private_repo, private_branch, marker_prefix)
 
         dry_run_commits = push_to_remote(
             private_repo, public, sync_branch, private_branch, force, dry_run
+        )
+
+        final_synced_sha = _get_last_synced_sha(
+            private_repo, private_branch, marker_prefix
         )
 
         if merge and not dry_run:
@@ -127,10 +184,12 @@ def sync(
                 "paths_to_keep": paths_to_keep,
                 "dry_run_commits": dry_run_commits,
                 "merge_success": success,
+                "last_synced_sha": final_synced_sha,
             }
 
         return {
             "paths_to_keep": paths_to_keep,
             "dry_run_commits": dry_run_commits,
             "merge_success": None,
+            "last_synced_sha": final_synced_sha,
         }
