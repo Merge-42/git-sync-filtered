@@ -2,7 +2,7 @@ from fnmatch import translate as glob_translate
 from pathlib import Path
 
 import click
-from pydantic import BaseModel, ConfigDict, FilePath, field_validator
+from pydantic import BaseModel, ConfigDict, FilePath, field_validator, model_validator
 
 from git_sync_filtered.sync import sync
 
@@ -21,13 +21,6 @@ class SyncConfig(BaseModel):
     merge: bool = False
     force: bool = False
 
-    @field_validator("keep", mode="before")
-    @classmethod
-    def ensure_non_empty(cls, v: tuple[str, ...]) -> tuple[str, ...]:
-        if not v:
-            raise ValueError("At least one --keep path required")
-        return v
-
     @field_validator("keep", mode="after")
     @classmethod
     def validate_glob_paths(cls, v: tuple[str, ...]) -> tuple[str, ...]:
@@ -36,6 +29,12 @@ class SyncConfig(BaseModel):
                 raise ValueError("Keep path cannot be empty")
             glob_translate(path)
         return v
+
+    @model_validator(mode="after")
+    def ensure_keep_paths(self) -> "SyncConfig":
+        if not self.keep and not self.keep_from_file:
+            raise ValueError("At least one --keep path or --keep-from-file required")
+        return self
 
     @field_validator("sync_branch", "main_branch", "private_branch", mode="after")
     @classmethod
